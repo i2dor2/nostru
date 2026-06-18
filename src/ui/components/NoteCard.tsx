@@ -1,25 +1,27 @@
-import { useState, useCallback } from 'react';
-import type { NDKEvent } from '@nostr-dev-kit/ndk';
+import { useState, useCallback, useEffect } from 'react';
+import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { nip19 } from 'nostr-tools';
 import { IconArrowForwardUp, IconRepeat, IconHeart, IconBolt, IconRosetteDiscountCheckFilled } from '@tabler/icons-react';
 import { encodePubkey, truncateNpub } from '../../core/keys';
-import { useProfile, useNip05 } from '../feed/hooks';
+import { useProfile, useNip05, useNoteStats } from '../feed/hooks';
 import { useNDK } from '../../core/ndk';
 import { publishLike, publishRepost } from '../../core/events/reactions';
 import { useNav } from '../context/NavContext';
 import { ZapModal } from './ZapModal';
 
 const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|avif)(\?[^)\s]*)?$/i;
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v|ogv)(\?[^)\s]*)?$/i;
 
 type Segment =
   | { kind: 'text'; value: string }
   | { kind: 'image'; url: string }
+  | { kind: 'video'; url: string }
   | { kind: 'url'; url: string }
   | { kind: 'hashtag'; tag: string }
   | { kind: 'nostr-profile'; pubkey: string; raw: string }
   | { kind: 'nostr-event'; eventId: string; raw: string };
 
-const TOKEN_RE = /(https?:\/\/\S+)|(#[\w-￿]+)|(nostr:[a-z0-9]+)/gi;
+const TOKEN_RE = /(https?:\/\/\S+)|(#[\w-￿]+)|(nostr:[a-z0-9]+)/gi;
 
 function parseSegments(content: string): Segment[] {
   const segments: Segment[] = [];
@@ -49,6 +51,8 @@ function parseSegments(content: string): Segment[] {
       }
     } else if (token.startsWith('#')) {
       segments.push({ kind: 'hashtag', tag: token.slice(1) });
+    } else if (VIDEO_EXT.test(token)) {
+      segments.push({ kind: 'video', url: token });
     } else if (IMAGE_EXT.test(token)) {
       segments.push({ kind: 'image', url: token });
     } else {
@@ -89,9 +93,14 @@ function Avatar({
   const hue = parseInt(pubkey.slice(0, 4), 16) % 360;
   const cls = `w-${size} h-${size} rounded-full shrink-0 focus:outline-none overflow-hidden`;
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick?.();
+  }, [onClick]);
+
   if (picture && !imgFailed) {
     return (
-      <button onClick={onClick} className={cls} aria-label="View profile">
+      <button onClick={handleClick} className={cls} aria-label="View profile">
         <img
           src={picture}
           alt=""
@@ -105,7 +114,7 @@ function Avatar({
 
   return (
     <button
-      onClick={onClick}
+      onClick={handleClick}
       className={`${cls} flex items-center justify-center text-xs font-medium text-white`}
       style={{ backgroundColor: `hsl(${hue} 60% 45%)` }}
       aria-label="View profile"
@@ -121,7 +130,7 @@ function NostrProfileMention({ pubkey, raw }: { pubkey: string; raw: string }) {
   const display = profile?.displayName ?? profile?.name ?? truncateNpub(encodePubkey(pubkey));
   return (
     <button
-      onClick={() => push({ view: 'profile', pubkey })}
+      onClick={e => { e.stopPropagation(); push({ view: 'profile', pubkey }); }}
       className="text-accent hover:underline font-medium"
     >
       @{display}
@@ -129,15 +138,47 @@ function NostrProfileMention({ pubkey, raw }: { pubkey: string; raw: string }) {
   );
 }
 
-function NostrEventMention({ eventId, raw }: { eventId: string; raw: string }) {
+function EmbeddedNote({ eventId }: { eventId: string }) {
+  const { ndk } = useNDK();
   const { push } = useNav();
+  const [ev, setEv] = useState<NDKEvent | null>(null);
+
+  useEffect(() => {
+    if (!ndk || !eventId) return;
+    let cancelled = false;
+    ndk.fetchEvent(eventId).then(e => { if (!cancelled) setEv(e); });
+    return () => { cancelled = true; };
+  }, [ndk, eventId]);
+
+  const authorProfile = useProfile(ev?.pubkey ?? '');
+  const authorName = ev
+    ? (authorProfile?.displayName ?? authorProfile?.name ?? truncateNpub(encodePubkey(ev.pubkey)))
+    : null;
+
+  if (!ev) {
+    return (
+      <span className="inline-block text-xs text-zinc-400 italic">loading note...</span>
+    );
+  }
+
   return (
-    <button
-      onClick={() => push({ view: 'event-ref', eventId })}
-      className="text-accent hover:underline font-mono text-xs"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={e => { e.stopPropagation(); push({ view: 'event-ref', eventId }); }}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); push({ view: 'event-ref', eventId }); } }}
+      className="mt-1 rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors space-y-1"
     >
-      {raw.slice(0, 16)}...
-    </button>
+      <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+        <span className="truncate">{authorName}</span>
+        {ev.created_at && (
+          <span className="shrink-0 text-zinc-400">{relativeTime(ev.created_at)}</span>
+        )}
+      </div>
+      <p className="text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words line-clamp-6 leading-relaxed">
+        {ev.content}
+      </p>
+    </div>
   );
 }
 
@@ -145,10 +186,12 @@ function ContentRenderer({ content }: { content: string }) {
   const { push } = useNav();
   const segments = parseSegments(content);
 
-  const inlineSegs = segments.filter(s => s.kind !== 'image');
+  const inlineSegs = segments.filter(s => s.kind !== 'image' && s.kind !== 'video' && s.kind !== 'nostr-event');
   const imageSegs = segments.filter(s => s.kind === 'image') as Extract<Segment, { kind: 'image' }>[];
+  const videoSegs = segments.filter(s => s.kind === 'video') as Extract<Segment, { kind: 'video' }>[];
+  const eventSegs = segments.filter(s => s.kind === 'nostr-event') as Extract<Segment, { kind: 'nostr-event' }>[];
 
-  const hasText = inlineSegs.length > 0;
+  const hasText = inlineSegs.some(s => s.kind !== 'text' || s.value.trim().length > 0);
 
   return (
     <div className="space-y-2">
@@ -159,7 +202,7 @@ function ContentRenderer({ content }: { content: string }) {
             if (seg.kind === 'hashtag') return (
               <button
                 key={i}
-                onClick={() => push({ view: 'search', query: `#${seg.tag}` })}
+                onClick={e => { e.stopPropagation(); push({ view: 'search', query: `#${seg.tag}` }); }}
                 className="text-accent hover:underline"
               >
                 #{seg.tag}
@@ -178,7 +221,6 @@ function ContentRenderer({ content }: { content: string }) {
               </a>
             );
             if (seg.kind === 'nostr-profile') return <NostrProfileMention key={i} pubkey={seg.pubkey} raw={seg.raw} />;
-            if (seg.kind === 'nostr-event') return <NostrEventMention key={i} eventId={seg.eventId} raw={seg.raw} />;
             return null;
           })}
         </p>
@@ -200,8 +242,26 @@ function ContentRenderer({ content }: { content: string }) {
           />
         </a>
       ))}
+      {videoSegs.map((seg, i) => (
+        <video
+          key={i}
+          src={seg.url}
+          controls
+          preload="metadata"
+          className="rounded-lg max-h-[24rem] max-w-full"
+          onClick={e => e.stopPropagation()}
+        />
+      ))}
+      {eventSegs.map((seg, i) => (
+        <EmbeddedNote key={i} eventId={seg.eventId} />
+      ))}
     </div>
   );
+}
+
+function StatCount({ n }: { n: number }) {
+  if (n === 0) return null;
+  return <span className="text-xs tabular-nums">{n}</span>;
 }
 
 export function NoteCard({ event }: { event: NDKEvent }) {
@@ -210,6 +270,7 @@ export function NoteCard({ event }: { event: NDKEvent }) {
   const { push } = useNav();
   const profile = useProfile(event.pubkey);
   const verified = useNip05(profile?.nip05 ?? undefined, event.pubkey);
+  const stats = useNoteStats(event.id);
   const [liked, setLiked] = useState(false);
   const [liking, setLiking] = useState(false);
   const [reposted, setReposted] = useState(false);
@@ -227,7 +288,8 @@ export function NoteCard({ event }: { event: NDKEvent }) {
     push({ view: 'thread', event });
   }, [push, event]);
 
-  const handleLike = useCallback(async () => {
+  const handleLike = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!ndk || liked || liking) return;
     setLiking(true);
     setLiked(true);
@@ -240,7 +302,8 @@ export function NoteCard({ event }: { event: NDKEvent }) {
     }
   }, [ndk, liked, liking, event]);
 
-  const handleRepost = useCallback(async () => {
+  const handleRepost = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!ndk || reposted) return;
     setReposted(true);
     try {
@@ -250,13 +313,22 @@ export function NoteCard({ event }: { event: NDKEvent }) {
     }
   }, [ndk, reposted, event]);
 
+  const totalLikes = stats.likes + (liked ? 1 : 0);
+  const totalReposts = stats.reposts + (reposted ? 1 : 0);
+
   return (
-    <article className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
+    <article
+      className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors cursor-pointer"
+      onClick={goThread}
+    >
       <div className="flex gap-3">
         <Avatar pubkey={event.pubkey} name={name} picture={picture} onClick={goProfile} />
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-2">
-            <button onClick={goProfile} className="text-sm font-medium truncate hover:underline text-left focus:outline-none">
+            <button
+              onClick={e => { e.stopPropagation(); goProfile(); }}
+              className="text-sm font-medium truncate hover:underline text-left focus:outline-none"
+            >
               {display}
             </button>
             {verified && (
@@ -267,7 +339,7 @@ export function NoteCard({ event }: { event: NDKEvent }) {
           <ContentRenderer content={event.content} />
           <div className="flex gap-5 pt-1">
             <button
-              onClick={goThread}
+              onClick={e => { e.stopPropagation(); goThread(); }}
               className="flex items-center gap-1 text-zinc-400 hover:text-accent transition-colors"
               aria-label="Reply"
             >
@@ -275,24 +347,27 @@ export function NoteCard({ event }: { event: NDKEvent }) {
             </button>
             <button
               onClick={handleRepost}
-              className={`flex items-center gap-1 transition-colors ${reposted ? 'text-green-500' : 'text-zinc-400 hover:text-green-500'}`}
+              className={`flex items-center gap-1.5 transition-colors ${reposted ? 'text-green-500' : 'text-zinc-400 hover:text-green-500'}`}
               aria-label="Repost"
             >
               <IconRepeat size={15} />
+              <StatCount n={totalReposts} />
             </button>
             <button
               onClick={handleLike}
-              className={`flex items-center gap-1 transition-colors ${liked ? 'text-red-500' : 'text-zinc-400 hover:text-red-500'}`}
+              className={`flex items-center gap-1.5 transition-colors ${liked ? 'text-red-500' : 'text-zinc-400 hover:text-red-500'}`}
               aria-label="Like"
             >
               <IconHeart size={15} fill={liked ? 'currentColor' : 'none'} />
+              <StatCount n={totalLikes} />
             </button>
             <button
-              onClick={() => setZapOpen(true)}
-              className="flex items-center gap-1 text-zinc-400 hover:text-zap transition-colors"
+              onClick={e => { e.stopPropagation(); setZapOpen(true); }}
+              className="flex items-center gap-1.5 text-zinc-400 hover:text-zap transition-colors"
               aria-label="Zap"
             >
               <IconBolt size={15} />
+              <StatCount n={stats.zaps} />
             </button>
           </div>
         </div>

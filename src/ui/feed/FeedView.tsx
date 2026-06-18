@@ -1,9 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
-import type { NDKEvent } from '@nostr-dev-kit/ndk';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import NDK, { NDKEvent } from '@nostr-dev-kit/ndk';
+import { IconRepeat } from '@tabler/icons-react';
 import { useNDK } from '../../core/ndk';
 import { NoteCard } from '../components/NoteCard';
 import { Composer } from '../components/Composer';
-import { useFeed, useFollows, useGlobalFeed, useBlocks } from './hooks';
+import { useFeed, useFollows, useGlobalFeed, useBlocks, useProfile } from './hooks';
+import { encodePubkey, truncateNpub } from '../../core/keys';
 
 function Spinner() {
   return (
@@ -23,11 +25,67 @@ function mergeWithOptimistic(relayEvents: NDKEvent[], optimistic: NDKEvent[]): N
   return [...fresh, ...relayEvents];
 }
 
+type RawNostrEvent = {
+  id: string;
+  pubkey: string;
+  created_at: number;
+  kind: number;
+  content: string;
+  tags: string[][];
+  sig?: string;
+};
+
+function RepostCard({ event }: { event: NDKEvent }) {
+  const { ndk } = useNDK();
+  const reposterProfile = useProfile(event.pubkey);
+  const reposterName = reposterProfile?.displayName ?? reposterProfile?.name ?? truncateNpub(encodePubkey(event.pubkey));
+  const [originalEvent, setOriginalEvent] = useState<NDKEvent | null>(null);
+
+  useEffect(() => {
+    // Try to parse original event from content (NIP-18)
+    try {
+      const data = JSON.parse(event.content) as RawNostrEvent;
+      if (data.id && data.pubkey && typeof data.kind === 'number') {
+        const ev = new NDKEvent(ndk ?? undefined, data);
+        setOriginalEvent(ev);
+        return;
+      }
+    } catch { /* not JSON */ }
+
+    // Fall back to fetching by e tag
+    const eTag = event.tags.find(t => t[0] === 'e');
+    if (!eTag?.[1] || !ndk) return;
+    let cancelled = false;
+    ndk.fetchEvent(eTag[1]).then(ev => {
+      if (!cancelled && ev) setOriginalEvent(ev);
+    });
+    return () => { cancelled = true; };
+  }, [event, ndk]);
+
+  return (
+    <div className="border-b border-zinc-100 dark:border-zinc-800">
+      <div className="flex items-center gap-1.5 px-4 pt-2 pb-0 text-xs text-zinc-400">
+        <IconRepeat size={11} className="text-green-400 shrink-0" />
+        <span className="truncate">{reposterName} reposted</span>
+      </div>
+      {originalEvent
+        ? <NoteCard event={originalEvent} />
+        : <div className="px-4 py-3 text-xs text-zinc-400">Loading...</div>
+      }
+    </div>
+  );
+}
+
+function EventCard({ event }: { event: NDKEvent }) {
+  if (event.kind === 6) return <RepostCard event={event} />;
+  return <NoteCard event={event} />;
+}
+
 function FollowingFeed({ pubkey, optimistic }: { pubkey: string; optimistic: NDKEvent[] }) {
   const follows = useFollows(pubkey);
   const blocks = useBlocks();
   const filter = useMemo(
-    () => ({ kinds: [1] as number[], authors: follows ?? [], limit: 50 }),
+    () => ({ kinds: [1, 6] as number[], authors: follows ?? [], limit: 50 }),
     [follows],
   );
   const { events, eose } = useFeed(filter, follows !== null && follows.length > 0);
@@ -43,7 +101,7 @@ function FollowingFeed({ pubkey, optimistic }: { pubkey: string; optimistic: NDK
   if (!eose && events.length === 0 && optimistic.length === 0) return <Spinner />;
   if (all.length === 0) return <EmptyState text="No recent notes from people you follow." />;
 
-  return <div>{all.map(ev => <NoteCard key={ev.id} event={ev} />)}</div>;
+  return <div>{all.map(ev => <EventCard key={ev.id} event={ev} />)}</div>;
 }
 
 function GlobalFeed({ optimistic }: { optimistic: NDKEvent[] }) {
@@ -59,7 +117,7 @@ function GlobalFeed({ optimistic }: { optimistic: NDKEvent[] }) {
   if (!eose && all.length === 0) return <Spinner />;
   if (all.length === 0) return <EmptyState text="No events yet." />;
 
-  return <div>{all.map(ev => <NoteCard key={ev.id} event={ev} />)}</div>;
+  return <div>{all.map(ev => <EventCard key={ev.id} event={ev} />)}</div>;
 }
 
 type Tab = 'following' | 'global';

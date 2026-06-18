@@ -1,5 +1,5 @@
 import NDK, { NDKSubscriptionCacheUsage, type NDKEvent, type NDKFilter, type NDKUserProfile } from '@nostr-dev-kit/ndk';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNDK } from '../../core/ndk';
 import { verifyNip05 } from '../../core/events/nip05';
 import { getBlocks } from '../../core/store/blocks';
@@ -131,6 +131,18 @@ export function useNip05(identifier: string | undefined, pubkey: string): boolea
   }, [identifier, pubkey]);
 
   return verified;
+}
+
+export function useNoteStats(eventId: string): { likes: number; reposts: number; zaps: number } {
+  const { events } = useFeed(
+    { kinds: [6, 7, 9735] as number[], '#e': [eventId] },
+    !!eventId,
+  );
+  return useMemo(() => ({
+    likes: events.filter(e => e.kind === 7).length,
+    reposts: events.filter(e => e.kind === 6).length,
+    zaps: events.filter(e => e.kind === 9735).length,
+  }), [events]);
 }
 
 export function useBlocks(): Set<string> {
