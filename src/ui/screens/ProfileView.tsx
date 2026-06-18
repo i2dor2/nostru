@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   IconRosetteDiscountCheckFilled,
   IconPencil,
@@ -224,6 +224,13 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
     }
   };
 
+  const profileFollows = useFollows(pubkey);
+  const followerFeed = useFeed({ kinds: [3], '#p': [pubkey], limit: 1000 }, !!ndk);
+  const followerCount = useMemo(
+    () => new Set(followerFeed.events.map(e => e.pubkey)).size,
+    [followerFeed.events],
+  );
+
   const kind1 = useFeed({ kinds: [1], authors: [pubkey], limit: 100 }, !!ndk);
   const likeFeed = useFeed(
     { kinds: [7], authors: [pubkey], limit: 50 },
@@ -234,7 +241,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
     !!ndk && activeTab === 'zaps',
   );
   const youFeed = useFeed(
-    { kinds: [1], authors: [pubkey], '#p': [selfPubkey], limit: 50 },
+    { kinds: [1, 6, 7, 9735] as number[], authors: [pubkey], '#p': [selfPubkey], limit: 100 },
     !!ndk && activeTab === 'you' && !isSelf && !!selfPubkey,
   );
 
@@ -390,6 +397,16 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
                   {profile.website}
                 </a>
               )}
+              <div className="flex gap-4 mt-2 text-sm">
+                <span>
+                  <span className="font-semibold">{profileFollows !== null ? profileFollows.length : '-'}</span>
+                  <span className="text-zinc-400 ml-1">following</span>
+                </span>
+                <span>
+                  <span className="font-semibold">{followerCount > 0 ? followerCount : '-'}</span>
+                  <span className="text-zinc-400 ml-1">followers</span>
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -418,6 +435,8 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
           {events !== null && events.map(ev => {
             if (component === 'like') return <LikeCard key={ev.id} event={ev} />;
             if (component === 'zap') return <ZapCard key={ev.id} event={ev} />;
+            if (ev.kind === 7) return <LikeCard key={ev.id} event={ev} />;
+            if (ev.kind === 9735) return <ZapCard key={ev.id} event={ev} />;
             return <NoteCard key={ev.id} event={ev} />;
           })}
         </div>

@@ -12,6 +12,8 @@ import { ZapModal } from './ZapModal';
 const IMAGE_EXT = /\.(jpg|jpeg|png|gif|webp|avif)(\?[^)\s]*)?$/i;
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v|ogv)(\?[^)\s]*)?$/i;
 
+type NaddrData = { identifier: string; pubkey: string; ndkKind: number; relays?: string[] };
+
 type Segment =
   | { kind: 'text'; value: string }
   | { kind: 'image'; url: string }
@@ -19,7 +21,8 @@ type Segment =
   | { kind: 'url'; url: string }
   | { kind: 'hashtag'; tag: string }
   | { kind: 'nostr-profile'; pubkey: string; raw: string }
-  | { kind: 'nostr-event'; eventId: string; raw: string };
+  | { kind: 'nostr-event'; eventId: string; raw: string }
+  | { kind: 'nostr-address' } & NaddrData;
 
 const TOKEN_RE = /(https?:\/\/\S+)|(#[\w-￿]+)|(nostr:[a-z0-9]+)/gi;
 
@@ -43,6 +46,9 @@ function parseSegments(content: string): Segment[] {
           segments.push({ kind: 'nostr-event', eventId: decoded.data as string, raw: token });
         } else if (decoded.type === 'nevent') {
           segments.push({ kind: 'nostr-event', eventId: (decoded.data as { id: string }).id, raw: token });
+        } else if (decoded.type === 'naddr') {
+          const d = decoded.data as { identifier: string; pubkey: string; kind: number; relays?: string[] };
+          segments.push({ kind: 'nostr-address', identifier: d.identifier, pubkey: d.pubkey, ndkKind: d.kind, relays: d.relays });
         } else {
           segments.push({ kind: 'text', value: token });
         }
@@ -182,14 +188,55 @@ function EmbeddedNote({ eventId }: { eventId: string }) {
   );
 }
 
+function EmbeddedAddress({ identifier, pubkey, ndkKind, relays }: NaddrData) {
+  const { ndk } = useNDK();
+  const { push } = useNav();
+  const [ev, setEv] = useState<NDKEvent | null>(null);
+
+  useEffect(() => {
+    if (!ndk) return;
+    let cancelled = false;
+    ndk.fetchEvent({ kinds: [ndkKind], authors: [pubkey], '#d': [identifier] }).then(e => {
+      if (!cancelled) setEv(e);
+    });
+    return () => { cancelled = true; };
+  }, [ndk, ndkKind, pubkey, identifier]);
+
+  const authorProfile = useProfile(pubkey);
+  const authorName = authorProfile?.displayName ?? authorProfile?.name ?? truncateNpub(encodePubkey(pubkey));
+  const title = ev?.tags.find(t => t[0] === 'title')?.[1] ?? ev?.tags.find(t => t[0] === 'name')?.[1];
+
+  if (!ev) return <span className="inline-block text-xs text-zinc-400 italic">loading article...</span>;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={e => { e.stopPropagation(); push({ view: 'event-ref', eventId: ev.id }); }}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); push({ view: 'event-ref', eventId: ev.id }); } }}
+      className="mt-1 rounded-xl border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors space-y-1"
+    >
+      <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+        <span className="truncate">{authorName}</span>
+        {ev.created_at && <span className="shrink-0 text-zinc-400">{relativeTime(ev.created_at)}</span>}
+      </div>
+      {title && <p className="font-semibold text-zinc-800 dark:text-zinc-200 text-sm leading-snug">{title}</p>}
+      <p className="text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap break-words line-clamp-4 leading-relaxed text-xs">
+        {ev.content.slice(0, 300)}
+      </p>
+    </div>
+  );
+}
+
 function ContentRenderer({ content }: { content: string }) {
   const { push } = useNav();
   const segments = parseSegments(content);
 
-  const inlineSegs = segments.filter(s => s.kind !== 'image' && s.kind !== 'video' && s.kind !== 'nostr-event');
+  const inlineSegs = segments.filter(s => s.kind !== 'image' && s.kind !== 'video' && s.kind !== 'nostr-event' && s.kind !== 'nostr-address');
   const imageSegs = segments.filter(s => s.kind === 'image') as Extract<Segment, { kind: 'image' }>[];
   const videoSegs = segments.filter(s => s.kind === 'video') as Extract<Segment, { kind: 'video' }>[];
   const eventSegs = segments.filter(s => s.kind === 'nostr-event') as Extract<Segment, { kind: 'nostr-event' }>[];
+  const addressSegs = segments.filter(s => s.kind === 'nostr-address') as (NaddrData & { kind: 'nostr-address' })[];
 
   const hasText = inlineSegs.some(s => s.kind !== 'text' || s.value.trim().length > 0);
 
@@ -254,6 +301,9 @@ function ContentRenderer({ content }: { content: string }) {
       ))}
       {eventSegs.map((seg, i) => (
         <EmbeddedNote key={i} eventId={seg.eventId} />
+      ))}
+      {addressSegs.map((seg, i) => (
+        <EmbeddedAddress key={i} identifier={seg.identifier} pubkey={seg.pubkey} ndkKind={seg.ndkKind} relays={seg.relays} />
       ))}
     </div>
   );
