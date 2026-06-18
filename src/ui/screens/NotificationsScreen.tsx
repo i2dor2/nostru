@@ -1,5 +1,5 @@
 import { IconBell, IconHeart, IconRepeat, IconBolt, IconAt } from '@tabler/icons-react';
-import type { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NDKSubscriptionCacheUsage, type NDKEvent } from '@nostr-dev-kit/ndk';
 import { useAccount } from '../context/AccountContext';
 import { useFeed, useProfile, useBlocks } from '../feed/hooks';
 import { encodePubkey, truncateNpub } from '../../core/keys';
@@ -55,9 +55,11 @@ export function NotificationsScreen() {
     ? session.account.pubkey
     : '';
   const blocks = useBlocks();
+  const since = Math.floor(Date.now() / 1000) - 86400 * 30; // last 30 days
   const { events: raw, eose } = useFeed(
-    { kinds: [1, 6, 7, 9735] as number[], '#p': [myPubkey] },
+    { kinds: [1, 6, 7, 9735] as number[], '#p': [myPubkey], since, limit: 100 },
     !!myPubkey,
+    { cacheUsage: NDKSubscriptionCacheUsage.ONLY_RELAY },
   );
   const events = raw.filter(ev => !blocks.has(ev.pubkey));
 

@@ -4,12 +4,18 @@ import { useNDK } from '../../core/ndk';
 import { verifyNip05 } from '../../core/events/nip05';
 import { getBlocks } from '../../core/store/blocks';
 
-export function useFeed(filter: NDKFilter, enabled: boolean): { events: NDKEvent[]; eose: boolean } {
+export function useFeed(
+  filter: NDKFilter,
+  enabled: boolean,
+  opts?: { cacheUsage?: NDKSubscriptionCacheUsage },
+): { events: NDKEvent[]; eose: boolean } {
   const { ndk } = useNDK();
   const [map, setMap] = useState<Map<string, NDKEvent>>(new Map());
   const [eose, setEose] = useState(false);
   const filterRef = useRef(filter);
   filterRef.current = filter; // always current before effect runs
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
 
   const filterKey = JSON.stringify(filter);
 
@@ -18,7 +24,10 @@ export function useFeed(filter: NDKFilter, enabled: boolean): { events: NDKEvent
     setMap(new Map());
     setEose(false);
 
-    const sub = ndk.subscribe(filterRef.current, { closeOnEose: false });
+    const sub = ndk.subscribe(filterRef.current, {
+      closeOnEose: false,
+      cacheUsage: optsRef.current?.cacheUsage,
+    });
 
     sub.on('event', (ev: NDKEvent) => {
       setMap(prev => {

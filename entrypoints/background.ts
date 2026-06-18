@@ -135,43 +135,52 @@ async function checkNotifications(): Promise<void> {
   const pubkey = await getActivePubkey();
   if (!pubkey) return;
 
-  let since = await getLastSeen();
-  if (since === 0) {
-    // First run: only surface the past hour to avoid a notification flood
-    since = Math.floor(Date.now() / 1000) - 3600;
-    await setLastSeen(since);
-    return;
-  }
+  // Keepalive: prevent MV3 service worker from terminating during async WebSocket ops
+  const keepalive = setInterval(() => {
+    chrome.storage.session.set({ _ka: Date.now() }).catch(() => { /* ignore */ });
+  }, 4000);
 
-  const [relays, blocked] = await Promise.all([getSavedRelays(), getBlockedPubkeys()]);
-  const collected: NostrEvent[] = [];
+  try {
+    let since = await getLastSeen();
+    if (since === 0) {
+      // First run: only surface the past hour to avoid a notification flood
+      since = Math.floor(Date.now() / 1000) - 3600;
+      await setLastSeen(since);
+      // Don't return - still fetch from `since` so first-run notifications work
+    }
 
-  await Promise.all(
-    relays.slice(0, 3).map(url => fetchEventsFromRelay(url, pubkey, since + 1, collected)),
-  );
+    const [relays, blocked] = await Promise.all([getSavedRelays(), getBlockedPubkeys()]);
+    const collected: NostrEvent[] = [];
 
-  // Deduplicate by id, skip own events and blocked pubkeys
-  const seen = new Set<string>();
-  const fresh = collected.filter(ev => {
-    if (seen.has(ev.id)) return false;
-    seen.add(ev.id);
-    return ev.pubkey !== pubkey && !blocked.has(ev.pubkey);
-  });
+    await Promise.all(
+      relays.slice(0, 3).map(url => fetchEventsFromRelay(url, pubkey, since + 1, collected)),
+    );
 
-  fresh.sort((a, b) => a.created_at - b.created_at);
-
-  for (const ev of fresh) {
-    chrome.notifications.create(ev.id, {
-      type: 'basic',
-      iconUrl: ICON_URL,
-      title: notifTitle(ev.kind),
-      message: notifBody(ev),
+    // Deduplicate by id; skip own events and blocked pubkeys
+    const seen = new Set<string>();
+    const fresh = collected.filter(ev => {
+      if (seen.has(ev.id)) return false;
+      seen.add(ev.id);
+      return ev.pubkey !== pubkey && !blocked.has(ev.pubkey);
     });
-  }
 
-  if (fresh.length > 0) {
-    const maxTs = Math.max(...fresh.map(ev => ev.created_at));
-    await setLastSeen(maxTs);
+    fresh.sort((a, b) => a.created_at - b.created_at);
+
+    for (const ev of fresh) {
+      chrome.notifications.create(ev.id, {
+        type: 'basic',
+        iconUrl: ICON_URL,
+        title: notifTitle(ev.kind),
+        message: notifBody(ev),
+      });
+    }
+
+    if (fresh.length > 0) {
+      const maxTs = Math.max(...fresh.map(ev => ev.created_at));
+      await setLastSeen(maxTs);
+    }
+  } finally {
+    clearInterval(keepalive);
   }
 }
 
@@ -222,9 +231,18 @@ export default defineBackground(() => {
 
   // Open sidepanel when a notification is clicked
   chrome.notifications.onClicked.addListener(() => {
-    chrome.sidePanel.open({ windowId: undefined as unknown as number }).catch(() => {
-      // Fallback: focus existing sidepanel window
+    chrome.windows.getLastFocused({ populate: false }, win => {
+      if (win?.id) chrome.sidePanel.open({ windowId: win.id }).catch(() => { /* ignore */ });
     });
+  });
+
+  // Trigger first check immediately after install/update
+  chrome.runtime.onInstalled.addListener(() => {
+    chrome.alarms.create(ALARM_NAME, {
+      delayInMinutes: 1,
+      periodInMinutes: POLL_INTERVAL_MINUTES,
+    });
+    checkNotifications().catch(() => { /* silent failure */ });
   });
 });
 
