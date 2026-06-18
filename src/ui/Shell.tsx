@@ -22,6 +22,8 @@ import { PermissionsScreen } from './screens/PermissionsScreen';
 import { WalletScreen } from './screens/WalletScreen';
 import { MessagesScreen } from './screens/MessagesScreen';
 import { ConversationView } from './screens/ConversationView';
+import { NotificationsScreen } from './screens/NotificationsScreen';
+import { SearchScreen } from './screens/SearchScreen';
 import { WalletProvider } from './context/WalletContext';
 import { FeedView } from './feed/FeedView';
 import { truncateNpub, encodePubkey } from '../core/keys';
@@ -84,14 +86,6 @@ const NAV_ITEMS = [
   { icon: IconWallet, label: 'Wallet' },
 ];
 
-function PlaceholderTab({ label, note }: { label: string; note: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full gap-1">
-      <p className="text-zinc-500 text-sm">{label}</p>
-      <p className="text-zinc-400 text-xs">{note}</p>
-    </div>
-  );
-}
 
 function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
   const { current, pop, canPop } = useNav();
@@ -150,9 +144,9 @@ function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
           </nav>
           <main className="flex-1 overflow-hidden">
             {activeTab === 0 && <FeedView pubkey={pubkey} />}
-            {activeTab === 1 && <PlaceholderTab label="Notifications" note="Coming in M8" />}
+            {activeTab === 1 && <NotificationsScreen />}
             {activeTab === 2 && <MessagesScreen />}
-            {activeTab === 3 && <PlaceholderTab label="Search" note="Coming in M8" />}
+            {activeTab === 3 && <SearchScreen />}
             {activeTab === 4 && <WalletScreen />}
           </main>
         </>
