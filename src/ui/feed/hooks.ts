@@ -1,6 +1,7 @@
 import NDK, { NDKSubscriptionCacheUsage, type NDKEvent, type NDKFilter, type NDKUserProfile } from '@nostr-dev-kit/ndk';
 import { useEffect, useRef, useState } from 'react';
 import { useNDK } from '../../core/ndk';
+import { verifyNip05 } from '../../core/events/nip05';
 
 export function useFeed(filter: NDKFilter, enabled: boolean): { events: NDKEvent[]; eose: boolean } {
   const { ndk } = useNDK();
@@ -45,7 +46,8 @@ export function useFollows(pubkey: string | null): string[] | null {
     let cancelled = false;
 
     ndk.fetchEvent({ kinds: [3], authors: [pubkey] }).then(ev => {
-      if (cancelled || !ev) return;
+      if (cancelled) return;
+      if (!ev) { setFollows([]); return; }
       const pubkeys = ev.tags.filter(t => t[0] === 'p' && t[1]).map(t => t[1]);
       setFollows(pubkeys);
     });
@@ -104,4 +106,19 @@ export function useGlobalFeed(ndk: NDK | null): { events: NDKEvent[]; eose: bool
     events: Array.from(map.values()).sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0)).slice(0, 100),
     eose,
   };
+}
+
+export function useNip05(identifier: string | undefined, pubkey: string): boolean | null {
+  const [verified, setVerified] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!identifier) { setVerified(false); return; }
+    let cancelled = false;
+    verifyNip05(identifier, pubkey).then(result => {
+      if (!cancelled) setVerified(result);
+    });
+    return () => { cancelled = true; };
+  }, [identifier, pubkey]);
+
+  return verified;
 }

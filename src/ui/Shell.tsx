@@ -9,8 +9,9 @@ import {
   IconUserCircle,
   IconArrowLeft,
   IconShield,
+  IconSettings,
 } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AccountProvider, useAccount, useNpub, usePrivkey } from './context/AccountContext';
 import { NDKProvider } from '../core/ndk';
 import { NavProvider, useNav } from './context/NavContext';
@@ -24,11 +25,17 @@ import { MessagesScreen } from './screens/MessagesScreen';
 import { ConversationView } from './screens/ConversationView';
 import { NotificationsScreen } from './screens/NotificationsScreen';
 import { SearchScreen } from './screens/SearchScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
+import { EventRefView } from './screens/EventRefView';
 import { WalletProvider } from './context/WalletContext';
 import { FeedView } from './feed/FeedView';
 import { truncateNpub, encodePubkey } from '../core/keys';
+import { getTheme, applyTheme } from '../core/store/theme';
+import { getWideLayout, setWideLayout } from '../core/store/settings';
 
-function AccountSwitcher({ onConnectedSites }: { onConnectedSites: () => void }) {
+type MainView = 'app' | 'permissions' | 'settings' | 'wallet';
+
+function AccountSwitcher({ onNavigate }: { onNavigate: (view: MainView) => void }) {
   const { session, switchAccount, lock } = useAccount();
   const [open, setOpen] = useState(false);
   const npub = useNpub();
@@ -36,7 +43,14 @@ function AccountSwitcher({ onConnectedSites }: { onConnectedSites: () => void })
   if (session.status !== 'unlocked') return null;
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-2">
+      <button
+        onClick={() => { onNavigate('settings'); }}
+        className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+        aria-label="Settings"
+      >
+        <IconSettings size={16} />
+      </button>
       <button
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
@@ -60,7 +74,7 @@ function AccountSwitcher({ onConnectedSites }: { onConnectedSites: () => void })
           ))}
           <div className="border-t border-zinc-100 dark:border-zinc-800 mt-1 pt-1">
             <button
-              onClick={() => { onConnectedSites(); setOpen(false); }}
+              onClick={() => { onNavigate('permissions'); setOpen(false); }}
               className="w-full text-left px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors"
             >
               <IconShield size={12} /> Connected sites
@@ -86,18 +100,33 @@ const NAV_ITEMS = [
   { icon: IconWallet, label: 'Wallet' },
 ];
 
-
 function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
   const { current, pop, canPop } = useNav();
   const [activeTab, setActiveTab] = useState(0);
-  const [mainView, setMainView] = useState<'app' | 'permissions'>('app');
+  const [mainView, setMainView] = useState<MainView>('app');
+  const [wideLayout, setWideLayoutState] = useState(false);
 
-  const inPermissions = mainView === 'permissions';
-  const showBack = canPop || inPermissions;
+  useEffect(() => {
+    getWideLayout().then(setWideLayoutState);
+  }, []);
+
+  const handleWideLayoutChange = useCallback(async (value: boolean) => {
+    setWideLayoutState(value);
+    await setWideLayout(value);
+  }, []);
+
+  const isOverlay = mainView !== 'app';
+  const showBack = canPop || isOverlay;
+
+  const headerTitles: Partial<Record<MainView, string>> = {
+    permissions: 'Connected sites',
+    settings: 'Settings',
+    wallet: 'Wallet',
+  };
 
   const headerLeft = showBack ? (
     <button
-      onClick={() => { if (inPermissions) setMainView('app'); else pop(); }}
+      onClick={() => { if (isOverlay) setMainView('app'); else pop(); }}
       className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
     >
       <IconArrowLeft size={16} />
@@ -107,22 +136,42 @@ function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
     <span className="text-accent font-medium text-sm">Nostru</span>
   );
 
+  const handleNavigate = (view: MainView) => setMainView(view);
+
+  const widthCls = narrow || wideLayout ? 'w-full' : 'w-full max-w-2xl mx-auto';
+
   return (
-    <div className={`flex flex-col h-full ${narrow ? 'w-full' : 'max-w-xl mx-auto w-full'}`}>
+    <div className={`flex flex-col h-full ${widthCls}`}>
       <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
         {headerLeft}
-        {!inPermissions && <AccountSwitcher onConnectedSites={() => setMainView('permissions')} />}
-        {inPermissions && <span className="text-sm font-medium">Connected sites</span>}
+        {isOverlay
+          ? <span className="text-sm font-medium">{headerTitles[mainView] ?? ''}</span>
+          : <AccountSwitcher onNavigate={handleNavigate} />
+        }
       </header>
 
-      {inPermissions ? (
+      {mainView === 'permissions' ? (
         <PermissionsScreen />
+      ) : mainView === 'settings' ? (
+        <SettingsScreen
+          onOpenWallet={() => setMainView('wallet')}
+          onOpenPermissions={() => setMainView('permissions')}
+          narrow={narrow}
+          wideLayout={wideLayout}
+          onWideLayoutChange={handleWideLayoutChange}
+        />
+      ) : mainView === 'wallet' ? (
+        <WalletScreen />
       ) : current.view === 'thread' ? (
         <ThreadView event={current.event} />
       ) : current.view === 'profile' ? (
         <ProfileView pubkey={current.pubkey} />
       ) : current.view === 'conversation' ? (
         <ConversationView peerPubkey={current.peerPubkey} />
+      ) : current.view === 'search' ? (
+        <SearchScreen initialQuery={current.query} />
+      ) : current.view === 'event-ref' ? (
+        <EventRefView eventId={current.eventId} />
       ) : (
         <>
           <nav className={`flex border-b border-zinc-100 dark:border-zinc-800 shrink-0 ${narrow ? 'justify-around' : 'gap-1 px-2'}`}>
@@ -193,6 +242,10 @@ function Router({ narrow }: { narrow: boolean }) {
 }
 
 export function Shell({ narrow = false }: { narrow?: boolean }) {
+  useEffect(() => {
+    getTheme().then(applyTheme);
+  }, []);
+
   return (
     <AccountProvider>
       <div className="flex flex-col h-screen bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">

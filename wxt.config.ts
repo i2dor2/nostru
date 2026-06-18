@@ -7,18 +7,14 @@ export default defineConfig({
   manifest: {
     name: 'Nostru',
     description: 'Nostr social client for your browser',
-    permissions: ['storage', 'sidePanel', 'windows'],
+    permissions: ['storage', 'sidePanel', 'windows', 'notifications', 'alarms'],
+    host_permissions: ['https://*/*'],
     action: {},
   },
   vite: () => ({
     resolve: {
       alias: {
         tseep: 'eventemitter3',
-      },
-    },
-    css: {
-      postcss: {
-        plugins: [],
       },
     },
   }),

@@ -14,9 +14,9 @@ export function buildFilter(query: string): NDKFilter {
   return { kinds: [1], search: trimmed, limit: 50 };
 }
 
-export function SearchScreen() {
-  const [input, setInput] = useState('');
-  const [query, setQuery] = useState('');
+export function SearchScreen({ initialQuery = '' }: { initialQuery?: string }) {
+  const [input, setInput] = useState(initialQuery);
+  const [query, setQuery] = useState(initialQuery);
 
   const filter = buildFilter(query);
   const { events, eose } = useFeed(filter, query.length > 0);

@@ -2,6 +2,7 @@ import NDK from '@nostr-dev-kit/ndk';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { bytesToHex } from '../keys';
 import { createNDK } from './instance';
+import { getSavedRelays } from '../store/relays';
 
 interface NDKContextValue {
   ndk: NDK | null;
@@ -24,18 +25,25 @@ export function NDKProvider({ children, privkey }: { children: ReactNode; privke
       return;
     }
 
-    const instance = createNDK(bytesToHex(privkey));
-    instanceRef.current = instance;
-    setNdk(instance);
+    let cancelled = false;
+    const privkeyHex = bytesToHex(privkey);
 
-    instance.connect().then(() => {
-      if (instanceRef.current === instance) setConnected(true);
-    }).catch(() => {
-      if (instanceRef.current === instance) setConnected(true);
+    getSavedRelays().then(relayUrls => {
+      if (cancelled) return;
+      const instance = createNDK(privkeyHex, relayUrls);
+      instanceRef.current = instance;
+      setNdk(instance);
+
+      instance.connect().then(() => {
+        if (!cancelled && instanceRef.current === instance) setConnected(true);
+      }).catch(() => {
+        if (!cancelled && instanceRef.current === instance) setConnected(true);
+      });
     });
 
     return () => {
-      instance.pool.relays.forEach(r => r.disconnect());
+      cancelled = true;
+      instanceRef.current?.pool.relays.forEach(r => r.disconnect());
     };
   }, [privkey]);
 

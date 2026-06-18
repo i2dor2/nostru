@@ -11,3 +11,17 @@ export async function publishNote(ndk: NDK, content: string, tags: string[][] = 
   await event.publish();
   return event;
 }
+
+export async function publishProfile(
+  ndk: NDK,
+  metadata: Record<string, string>,
+): Promise<NDKEvent> {
+  const event = new NDKEvent(ndk, {
+    kind: 0,
+    content: JSON.stringify(metadata),
+    tags: [],
+  });
+  await event.sign();
+  await event.publish();
+  return event;
+}

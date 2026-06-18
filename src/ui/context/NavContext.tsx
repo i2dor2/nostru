@@ -4,11 +4,13 @@ import type { NDKEvent } from '@nostr-dev-kit/ndk';
 type ThreadNav = { view: 'thread'; event: NDKEvent };
 type ProfileNav = { view: 'profile'; pubkey: string };
 type ConversationNav = { view: 'conversation'; peerPubkey: string };
-type NavState = { view: 'feed' } | ThreadNav | ProfileNav | ConversationNav;
+type SearchNav = { view: 'search'; query: string };
+type EventRefNav = { view: 'event-ref'; eventId: string };
+type NavState = { view: 'feed' } | ThreadNav | ProfileNav | ConversationNav | SearchNav | EventRefNav;
 
 interface NavContextValue {
   current: NavState;
-  push: (state: ThreadNav | ProfileNav | ConversationNav) => void;
+  push: (state: ThreadNav | ProfileNav | ConversationNav | SearchNav | EventRefNav) => void;
   pop: () => void;
   canPop: boolean;
 }
@@ -18,7 +20,7 @@ const NavContext = createContext<NavContextValue | null>(null);
 export function NavProvider({ children }: { children: ReactNode }) {
   const [stack, setStack] = useState<NavState[]>([{ view: 'feed' }]);
 
-  const push = useCallback((state: ThreadNav | ProfileNav | ConversationNav) => {
+  const push = useCallback((state: ThreadNav | ProfileNav | ConversationNav | SearchNav | EventRefNav) => {
     setStack(prev => [...prev, state]);
   }, []);
 
