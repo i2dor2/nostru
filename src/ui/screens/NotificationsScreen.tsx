@@ -1,7 +1,7 @@
 import { IconBell, IconHeart, IconRepeat, IconBolt, IconAt } from '@tabler/icons-react';
 import type { NDKEvent } from '@nostr-dev-kit/ndk';
 import { useAccount } from '../context/AccountContext';
-import { useFeed, useProfile } from '../feed/hooks';
+import { useFeed, useProfile, useBlocks } from '../feed/hooks';
 import { encodePubkey, truncateNpub } from '../../core/keys';
 import { useNav } from '../context/NavContext';
 
@@ -54,10 +54,12 @@ export function NotificationsScreen() {
   const myPubkey = session.status === 'unlocked' || session.status === 'locked'
     ? session.account.pubkey
     : '';
-  const { events, eose } = useFeed(
+  const blocks = useBlocks();
+  const { events: raw, eose } = useFeed(
     { kinds: [1, 6, 7, 9735] as number[], '#p': [myPubkey] },
     !!myPubkey,
   );
+  const events = raw.filter(ev => !blocks.has(ev.pubkey));
 
   if (!myPubkey) return null;
 

@@ -1,7 +1,7 @@
 import { IconMail } from '@tabler/icons-react';
 import { useConversations } from '../messages/hooks';
 import { useNav } from '../context/NavContext';
-import { useProfile } from '../feed/hooks';
+import { useProfile, useBlocks } from '../feed/hooks';
 import { encodePubkey, truncateNpub } from '../../core/keys';
 
 function relativeTime(ts: number): string {
@@ -41,7 +41,8 @@ function ConversationRow({ peerPubkey, preview, timestamp }: { peerPubkey: strin
 }
 
 export function MessagesScreen() {
-  const conversations = useConversations();
+  const blocks = useBlocks();
+  const conversations = useConversations().filter(c => !blocks.has(c.peerPubkey));
 
   if (conversations.length === 0) {
     return (

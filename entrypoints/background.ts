@@ -16,6 +16,7 @@ const POLL_INTERVAL_MINUTES = 5;
 const LAST_SEEN_KEY = 'notif_last_seen';
 const ACCOUNTS_KEY = 'nostru:accounts';
 const RELAYS_KEY = 'relays';
+const BLOCKS_KEY = 'blocks';
 const ICON_URL = chrome.runtime.getURL('icon/48.png');
 
 const DEFAULT_RELAY_URLS = [
@@ -52,6 +53,11 @@ async function getSavedRelays(): Promise<string[]> {
   return saved?.length ? saved : DEFAULT_RELAY_URLS;
 }
 
+async function getBlockedPubkeys(): Promise<Set<string>> {
+  const result = await chrome.storage.local.get(BLOCKS_KEY);
+  return new Set((result[BLOCKS_KEY] as string[] | undefined) ?? []);
+}
+
 async function getLastSeen(): Promise<number> {
   const result = await chrome.storage.local.get(LAST_SEEN_KEY);
   return (result[LAST_SEEN_KEY] as number | undefined) ?? 0;
@@ -62,6 +68,7 @@ async function setLastSeen(ts: number): Promise<void> {
 }
 
 function notifTitle(kind: number): string {
+  if (kind === 4 || kind === 1059) return 'New message';
   if (kind === 7) return 'New reaction';
   if (kind === 6) return 'New repost';
   if (kind === 9735) return 'New zap';
@@ -69,6 +76,7 @@ function notifTitle(kind: number): string {
 }
 
 function notifBody(event: NostrEvent): string {
+  if (event.kind === 4 || event.kind === 1059) return 'You have a new private message';
   const raw = event.content.trim();
   if (event.kind === 9735) return 'Someone zapped you';
   if (event.kind === 7) return `${raw || '+'} from ${event.pubkey.slice(0, 8)}...`;
@@ -98,7 +106,7 @@ function fetchEventsFromRelay(
 
     ws.onopen = () => {
       ws.send(JSON.stringify(['REQ', subId, {
-        kinds: [1, 6, 7, 9735],
+        kinds: [1, 4, 6, 7, 1059, 9735],
         '#p': [pubkey],
         since,
         limit: 20,
@@ -135,19 +143,19 @@ async function checkNotifications(): Promise<void> {
     return;
   }
 
-  const relays = await getSavedRelays();
+  const [relays, blocked] = await Promise.all([getSavedRelays(), getBlockedPubkeys()]);
   const collected: NostrEvent[] = [];
 
   await Promise.all(
     relays.slice(0, 3).map(url => fetchEventsFromRelay(url, pubkey, since + 1, collected)),
   );
 
-  // Deduplicate by id
+  // Deduplicate by id, skip own events and blocked pubkeys
   const seen = new Set<string>();
   const fresh = collected.filter(ev => {
     if (seen.has(ev.id)) return false;
     seen.add(ev.id);
-    return ev.pubkey !== pubkey; // skip own events
+    return ev.pubkey !== pubkey && !blocked.has(ev.pubkey);
   });
 
   fresh.sort((a, b) => a.created_at - b.created_at);

@@ -2,6 +2,7 @@ import NDK, { NDKSubscriptionCacheUsage, type NDKEvent, type NDKFilter, type NDK
 import { useEffect, useRef, useState } from 'react';
 import { useNDK } from '../../core/ndk';
 import { verifyNip05 } from '../../core/events/nip05';
+import { getBlocks } from '../../core/store/blocks';
 
 export function useFeed(filter: NDKFilter, enabled: boolean): { events: NDKEvent[]; eose: boolean } {
   const { ndk } = useNDK();
@@ -121,4 +122,22 @@ export function useNip05(identifier: string | undefined, pubkey: string): boolea
   }, [identifier, pubkey]);
 
   return verified;
+}
+
+export function useBlocks(): Set<string> {
+  const [blocks, setBlocks] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    getBlocks().then(list => setBlocks(new Set(list)));
+
+    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+      if ('blocks' in changes) {
+        setBlocks(new Set((changes['blocks'].newValue as string[] | undefined) ?? []));
+      }
+    };
+    chrome.storage.local.onChanged.addListener(listener);
+    return () => chrome.storage.local.onChanged.removeListener(listener);
+  }, []);
+
+  return blocks;
 }

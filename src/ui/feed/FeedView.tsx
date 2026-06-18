@@ -3,7 +3,7 @@ import type { NDKEvent } from '@nostr-dev-kit/ndk';
 import { useNDK } from '../../core/ndk';
 import { NoteCard } from '../components/NoteCard';
 import { Composer } from '../components/Composer';
-import { useFeed, useFollows, useGlobalFeed } from './hooks';
+import { useFeed, useFollows, useGlobalFeed, useBlocks } from './hooks';
 
 function Spinner() {
   return (
@@ -25,12 +25,16 @@ function mergeWithOptimistic(relayEvents: NDKEvent[], optimistic: NDKEvent[]): N
 
 function FollowingFeed({ pubkey, optimistic }: { pubkey: string; optimistic: NDKEvent[] }) {
   const follows = useFollows(pubkey);
+  const blocks = useBlocks();
   const filter = useMemo(
     () => ({ kinds: [1] as number[], authors: follows ?? [], limit: 50 }),
     [follows],
   );
   const { events, eose } = useFeed(filter, follows !== null && follows.length > 0);
-  const all = useMemo(() => mergeWithOptimistic(events, optimistic), [events, optimistic]);
+  const all = useMemo(
+    () => mergeWithOptimistic(events, optimistic).filter(ev => !blocks.has(ev.pubkey)),
+    [events, optimistic, blocks],
+  );
 
   if (follows === null) return <Spinner />;
   if (follows.length === 0 && optimistic.length === 0) {
@@ -44,8 +48,12 @@ function FollowingFeed({ pubkey, optimistic }: { pubkey: string; optimistic: NDK
 
 function GlobalFeed({ optimistic }: { optimistic: NDKEvent[] }) {
   const { ndk } = useNDK();
+  const blocks = useBlocks();
   const { events, eose } = useGlobalFeed(ndk);
-  const all = useMemo(() => mergeWithOptimistic(events, optimistic), [events, optimistic]);
+  const all = useMemo(
+    () => mergeWithOptimistic(events, optimistic).filter(ev => !blocks.has(ev.pubkey)),
+    [events, optimistic, blocks],
+  );
 
   if (!ndk) return <Spinner />;
   if (!eose && all.length === 0) return <Spinner />;

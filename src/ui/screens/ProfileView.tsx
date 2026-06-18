@@ -7,10 +7,12 @@ import {
   IconMail,
   IconBolt,
   IconHeart,
+  IconBan,
 } from '@tabler/icons-react';
 import { zapInvoiceFromEvent, type NDKEvent } from '@nostr-dev-kit/ndk';
 import { useNDK } from '../../core/ndk';
-import { useProfile, useFollows, useFeed, useNip05 } from '../feed/hooks';
+import { useProfile, useFollows, useFeed, useNip05, useBlocks } from '../feed/hooks';
+import { addBlock, removeBlock } from '../../core/store/blocks';
 import { follow, unfollow } from '../../core/events/follows';
 import { publishProfile } from '../../core/events/publish';
 import { NoteCard } from '../components/NoteCard';
@@ -140,8 +142,11 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
   const profile = useProfile(pubkey);
   const verified = useNip05(profile?.nip05 ?? undefined, pubkey);
   const followList = useFollows(selfPubkey);
+  const blocks = useBlocks();
+  const isBlocked = blocks.has(pubkey);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [zapOpen, setZapOpen] = useState(false);
@@ -192,6 +197,17 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
       setSaving(false);
     }
   }, [ndk, saving, editState]);
+
+  const handleBlockToggle = async () => {
+    if (blockBusy) return;
+    setBlockBusy(true);
+    try {
+      if (isBlocked) await removeBlock(pubkey);
+      else await addBlock(pubkey);
+    } finally {
+      setBlockBusy(false);
+    }
+  };
 
   const handleFollowToggle = async () => {
     if (!ndk || followList === null || isFollowing === null || followBusy) return;
@@ -289,6 +305,19 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
                     }`}
                   >
                     {isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                  <button
+                    onClick={() => void handleBlockToggle()}
+                    disabled={blockBusy}
+                    title={isBlocked ? 'Unblock' : 'Block'}
+                    className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors disabled:opacity-50 ${
+                      isBlocked
+                        ? 'border-red-400 text-red-500 hover:border-zinc-300 hover:text-zinc-500'
+                        : 'border-zinc-300 dark:border-zinc-600 text-zinc-400 hover:border-red-400 hover:text-red-500'
+                    }`}
+                  >
+                    <IconBan size={12} />
+                    {isBlocked ? 'Blocked' : 'Block'}
                   </button>
                 </>
               )}
