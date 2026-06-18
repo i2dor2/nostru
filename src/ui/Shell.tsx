@@ -3,6 +3,7 @@ import {
   IconBell,
   IconMail,
   IconSearch,
+  IconBookmark,
   IconWallet,
   IconLock,
   IconChevronDown,
@@ -25,6 +26,7 @@ import { MessagesScreen } from './screens/MessagesScreen';
 import { ConversationView } from './screens/ConversationView';
 import { NotificationsScreen } from './screens/NotificationsScreen';
 import { SearchScreen } from './screens/SearchScreen';
+import { BookmarksScreen } from './screens/BookmarksScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { EventRefView } from './screens/EventRefView';
 import { WalletProvider } from './context/WalletContext';
@@ -97,6 +99,7 @@ const NAV_ITEMS = [
   { icon: IconBell, label: 'Notifications' },
   { icon: IconMail, label: 'Messages' },
   { icon: IconSearch, label: 'Search' },
+  { icon: IconBookmark, label: 'Saved' },
   { icon: IconWallet, label: 'Wallet' },
 ];
 
@@ -172,6 +175,8 @@ function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
         <SearchScreen initialQuery={current.query} />
       ) : current.view === 'event-ref' ? (
         <EventRefView eventId={current.eventId} />
+      ) : current.view === 'bookmarks' ? (
+        <BookmarksScreen />
       ) : (
         <>
           <nav className={`flex border-b border-zinc-100 dark:border-zinc-800 shrink-0 ${narrow ? 'justify-around' : 'gap-1 px-2'}`}>
@@ -196,7 +201,8 @@ function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
             {activeTab === 1 && <NotificationsScreen />}
             {activeTab === 2 && <MessagesScreen />}
             {activeTab === 3 && <SearchScreen />}
-            {activeTab === 4 && <WalletScreen />}
+            {activeTab === 4 && <BookmarksScreen />}
+            {activeTab === 5 && <WalletScreen />}
           </main>
         </>
       )}

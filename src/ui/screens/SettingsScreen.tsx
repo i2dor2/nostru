@@ -1,9 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
-import { IconPlus, IconTrash, IconRefresh, IconSun, IconMoon } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconRefresh, IconSun, IconMoon, IconX, IconEyeOff, IconShieldOff } from '@tabler/icons-react';
 import { useNDK } from '../../core/ndk';
 import { DEFAULT_RELAYS } from '../../core/ndk/config';
 import { getSavedRelays, saveRelays } from '../../core/store/relays';
 import { setTheme, applyTheme, type Theme } from '../../core/store/theme';
+import { useBlocks, useMutes, useProfile } from '../feed/hooks';
+import { removeBlock } from '../../core/store/blocks';
+import { removeMute, getMutes } from '../../core/store/mutes';
+import { publishMuteList } from '../../core/events/lists';
+import { encodePubkey, truncateNpub } from '../../core/keys';
 
 interface RelayEntry {
   url: string;
@@ -25,6 +30,34 @@ function StatusDot({ connected, connecting }: { connected: boolean; connecting: 
   return <span className="w-2 h-2 rounded-full bg-zinc-300 dark:bg-zinc-600 shrink-0" />;
 }
 
+function UserListRow({ pubkey, actionLabel, actionIcon: ActionIcon, onAction }: {
+  pubkey: string;
+  actionLabel: string;
+  actionIcon: React.ElementType;
+  onAction: () => void;
+}) {
+  const profile = useProfile(pubkey);
+  const npub = encodePubkey(pubkey);
+  const display = profile?.displayName ?? profile?.name ?? truncateNpub(npub);
+  return (
+    <li className="flex items-center gap-2 py-1.5">
+      {profile?.image
+        ? <img src={profile.image} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+        : <span className="w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-700 shrink-0" />
+      }
+      <span className="flex-1 text-sm truncate">{display}</span>
+      <button
+        onClick={onAction}
+        title={actionLabel}
+        className="flex items-center gap-1 text-xs text-zinc-400 hover:text-red-500 transition-colors shrink-0"
+      >
+        <ActionIcon size={13} />
+        {actionLabel}
+      </button>
+    </li>
+  );
+}
+
 export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLayout, onWideLayoutChange }: {
   onOpenWallet: () => void;
   onOpenPermissions: () => void;
@@ -40,6 +73,10 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
   const [theme, setThemeState] = useState<Theme>(
     () => document.documentElement.classList.contains('dark') ? 'dark' : 'light',
   );
+  const blocks = useBlocks();
+  const mutes = useMutes();
+  const blockedPubkeys = Array.from(blocks);
+  const mutedPubkeys = Array.from(mutes);
 
   useEffect(() => {
     getSavedRelays().then(setRelays);
@@ -119,6 +156,18 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
     if (e.key === 'Enter') void handleAdd();
   }, [handleAdd]);
 
+  const handleUnblock = useCallback(async (pubkey: string) => {
+    await removeBlock(pubkey);
+  }, []);
+
+  const handleUnmute = useCallback(async (pubkey: string) => {
+    await removeMute(pubkey);
+    if (ndk) {
+      const remaining = await getMutes();
+      publishMuteList(ndk, remaining).catch(() => {});
+    }
+  }, [ndk]);
+
   return (
     <div className="flex-1 overflow-y-auto">
       <section className="px-4 py-4 border-b border-zinc-100 dark:border-zinc-800">
@@ -197,7 +246,7 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
         {addError && <p className="text-xs text-red-500 mt-1">{addError}</p>}
       </section>
 
-      <section className="px-4 py-4">
+      <section className="px-4 py-4 border-b border-zinc-100 dark:border-zinc-800">
         <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">More</h2>
         <button
           onClick={onOpenWallet}
@@ -212,6 +261,44 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
           Connected sites
         </button>
       </section>
+
+      {blockedPubkeys.length > 0 && (
+        <section className="px-4 py-4 border-b border-zinc-100 dark:border-zinc-800">
+          <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">
+            Blocked users ({blockedPubkeys.length})
+          </h2>
+          <ul className="space-y-0.5">
+            {blockedPubkeys.map(pk => (
+              <UserListRow
+                key={pk}
+                pubkey={pk}
+                actionLabel="Unblock"
+                actionIcon={IconShieldOff}
+                onAction={() => void handleUnblock(pk)}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {mutedPubkeys.length > 0 && (
+        <section className="px-4 py-4">
+          <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">
+            Muted users ({mutedPubkeys.length})
+          </h2>
+          <ul className="space-y-0.5">
+            {mutedPubkeys.map(pk => (
+              <UserListRow
+                key={pk}
+                pubkey={pk}
+                actionLabel="Unmute"
+                actionIcon={IconEyeOff}
+                onAction={() => void handleUnmute(pk)}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

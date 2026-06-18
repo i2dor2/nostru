@@ -4,7 +4,7 @@ import { IconRepeat } from '@tabler/icons-react';
 import { useNDK } from '../../core/ndk';
 import { NoteCard } from '../components/NoteCard';
 import { Composer } from '../components/Composer';
-import { useFeed, useFollows, useGlobalFeed, useBlocks, useProfile } from './hooks';
+import { useFeed, useFollows, useGlobalFeed, useBlocks, useMutes, useProfile } from './hooks';
 import { encodePubkey, truncateNpub } from '../../core/keys';
 
 function Spinner() {
@@ -84,14 +84,15 @@ function EventCard({ event }: { event: NDKEvent }) {
 function FollowingFeed({ pubkey, optimistic }: { pubkey: string; optimistic: NDKEvent[] }) {
   const follows = useFollows(pubkey);
   const blocks = useBlocks();
+  const mutes = useMutes();
   const filter = useMemo(
     () => ({ kinds: [1, 6] as number[], authors: follows ?? [], limit: 50 }),
     [follows],
   );
   const { events, eose } = useFeed(filter, follows !== null && follows.length > 0);
   const all = useMemo(
-    () => mergeWithOptimistic(events, optimistic).filter(ev => !blocks.has(ev.pubkey)),
-    [events, optimistic, blocks],
+    () => mergeWithOptimistic(events, optimistic).filter(ev => !blocks.has(ev.pubkey) && !mutes.has(ev.pubkey)),
+    [events, optimistic, blocks, mutes],
   );
 
   if (follows === null) return <Spinner />;
@@ -107,10 +108,11 @@ function FollowingFeed({ pubkey, optimistic }: { pubkey: string; optimistic: NDK
 function GlobalFeed({ optimistic }: { optimistic: NDKEvent[] }) {
   const { ndk } = useNDK();
   const blocks = useBlocks();
+  const mutes = useMutes();
   const { events, eose } = useGlobalFeed(ndk);
   const all = useMemo(
-    () => mergeWithOptimistic(events, optimistic).filter(ev => !blocks.has(ev.pubkey)),
-    [events, optimistic, blocks],
+    () => mergeWithOptimistic(events, optimistic).filter(ev => !blocks.has(ev.pubkey) && !mutes.has(ev.pubkey)),
+    [events, optimistic, blocks, mutes],
   );
 
   if (!ndk) return <Spinner />;

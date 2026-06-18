@@ -8,11 +8,15 @@ import {
   IconBolt,
   IconHeart,
   IconBan,
+  IconEyeOff,
+  IconPin,
 } from '@tabler/icons-react';
 import { zapInvoiceFromEvent, type NDKEvent } from '@nostr-dev-kit/ndk';
 import { useNDK } from '../../core/ndk';
-import { useProfile, useFollows, useFeed, useNip05, useBlocks } from '../feed/hooks';
+import { useProfile, useFollows, useFeed, useNip05, useBlocks, useMutes } from '../feed/hooks';
 import { addBlock, removeBlock } from '../../core/store/blocks';
+import { addMute, removeMute, getMutes } from '../../core/store/mutes';
+import { publishMuteList, fetchNip51List } from '../../core/events/lists';
 import { follow, unfollow } from '../../core/events/follows';
 import { publishProfile } from '../../core/events/publish';
 import { NoteCard } from '../components/NoteCard';
@@ -143,10 +147,14 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
   const verified = useNip05(profile?.nip05 ?? undefined, pubkey);
   const followList = useFollows(selfPubkey);
   const blocks = useBlocks();
+  const mutes = useMutes();
   const isBlocked = blocks.has(pubkey);
+  const isMuted = mutes.has(pubkey);
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
+  const [muteBusy, setMuteBusy] = useState(false);
+  const [pinnedEvents, setPinnedEvents] = useState<NDKEvent[]>([]);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [zapOpen, setZapOpen] = useState(false);
@@ -197,6 +205,33 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
       setSaving(false);
     }
   }, [ndk, saving, editState]);
+
+  useEffect(() => {
+    if (!ndk) return;
+    let cancelled = false;
+    fetchNip51List(ndk, pubkey, 10001).then(async ids => {
+      if (cancelled || ids.length === 0) return;
+      const evSet = await ndk.fetchEvents({ ids });
+      if (!cancelled) setPinnedEvents(Array.from(evSet));
+    });
+    return () => { cancelled = true; };
+  }, [ndk, pubkey]);
+
+  const handleMuteToggle = async () => {
+    if (muteBusy) return;
+    setMuteBusy(true);
+    try {
+      if (isMuted) {
+        await removeMute(pubkey);
+        if (ndk) publishMuteList(ndk, await getMutes()).catch(() => { /* silent */ });
+      } else {
+        await addMute(pubkey);
+        if (ndk) publishMuteList(ndk, await getMutes()).catch(() => { /* silent */ });
+      }
+    } finally {
+      setMuteBusy(false);
+    }
+  };
 
   const handleBlockToggle = async () => {
     if (blockBusy) return;
@@ -314,6 +349,19 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
                     {isFollowing ? 'Following' : 'Follow'}
                   </button>
                   <button
+                    onClick={() => void handleMuteToggle()}
+                    disabled={muteBusy}
+                    title={isMuted ? 'Unmute' : 'Mute'}
+                    className={`flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors disabled:opacity-50 ${
+                      isMuted
+                        ? 'border-amber-400 text-amber-500 hover:border-zinc-300 hover:text-zinc-500'
+                        : 'border-zinc-300 dark:border-zinc-600 text-zinc-400 hover:border-amber-400 hover:text-amber-500'
+                    }`}
+                  >
+                    <IconEyeOff size={12} />
+                    {isMuted ? 'Muted' : 'Mute'}
+                  </button>
+                  <button
                     onClick={() => void handleBlockToggle()}
                     disabled={blockBusy}
                     title={isBlocked ? 'Unblock' : 'Block'}
@@ -428,6 +476,18 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
         </nav>
 
         <div>
+          {activeTab === 'posts' && pinnedEvents.length > 0 && (
+            <div className="border-b border-zinc-100 dark:border-zinc-800">
+              {pinnedEvents.map(ev => (
+                <div key={`pin-${ev.id}`} className="relative">
+                  <div className="flex items-center gap-1 px-4 pt-2 text-xs text-zinc-400">
+                    <IconPin size={11} /> Pinned
+                  </div>
+                  <NoteCard event={ev} pinned />
+                </div>
+              ))}
+            </div>
+          )}
           {!eose && (events === null || events.length === 0) && <Spinner />}
           {eose && events !== null && events.length === 0 && (
             <p className="text-center text-zinc-400 text-sm py-8">Nothing here yet.</p>

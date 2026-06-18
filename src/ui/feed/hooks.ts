@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNDK } from '../../core/ndk';
 import { verifyNip05 } from '../../core/events/nip05';
 import { getBlocks } from '../../core/store/blocks';
+import { getMutes } from '../../core/store/mutes';
+import { getPins } from '../../core/store/pins';
+import { getBookmarks } from '../../core/store/bookmarks';
 
 export function useFeed(
   filter: NDKFilter,
@@ -145,20 +148,23 @@ export function useNoteStats(eventId: string): { likes: number; reposts: number;
   }), [events]);
 }
 
-export function useBlocks(): Set<string> {
-  const [blocks, setBlocks] = useState<Set<string>>(new Set());
-
+function useStorageSet(key: string, loader: () => Promise<string[]>): Set<string> {
+  const [set, setSet] = useState<Set<string>>(new Set());
   useEffect(() => {
-    getBlocks().then(list => setBlocks(new Set(list)));
-
+    loader().then(list => setSet(new Set(list)));
     const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
-      if ('blocks' in changes) {
-        setBlocks(new Set((changes['blocks'].newValue as string[] | undefined) ?? []));
+      if (key in changes) {
+        setSet(new Set((changes[key].newValue as string[] | undefined) ?? []));
       }
     };
     chrome.storage.local.onChanged.addListener(listener);
     return () => chrome.storage.local.onChanged.removeListener(listener);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  return blocks;
+  return set;
 }
+
+export function useBlocks(): Set<string> { return useStorageSet('blocks', getBlocks); }
+export function useMutes(): Set<string> { return useStorageSet('mutes', getMutes); }
+export function usePins(): Set<string> { return useStorageSet('pins', getPins); }
+export function useBookmarks(): Set<string> { return useStorageSet('bookmarks', getBookmarks); }
