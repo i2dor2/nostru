@@ -1,7 +1,8 @@
 import type NDK from '@nostr-dev-kit/ndk';
-import { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NDKEvent, NDKRelaySet } from '@nostr-dev-kit/ndk';
 import { nip59, getPublicKey, type NostrEvent } from 'nostr-tools';
 import { hexToBytes } from '@noble/hashes/utils.js';
+import { DEFAULT_RELAYS } from '../ndk/config';
 import type { DecryptedMessage } from './types';
 
 export async function sendNip17(
@@ -17,9 +18,12 @@ export async function sendNip17(
   const wrapForRecipient = nip59.wrapEvent(template, privkey, recipientPubkey);
   const wrapForSelf = nip59.wrapEvent(template, privkey, myPubkey);
 
+  // Bypass outbox model: gift wraps use ephemeral keys with no NIP-65, so
+  // NDK would route to zero relays without an explicit set.
+  const relaySet = NDKRelaySet.fromRelayUrls([...DEFAULT_RELAYS], ndk);
   await Promise.all([
-    new NDKEvent(ndk, wrapForRecipient as NostrEvent).publish(),
-    new NDKEvent(ndk, wrapForSelf as NostrEvent).publish(),
+    new NDKEvent(ndk, wrapForRecipient as NostrEvent).publish(relaySet),
+    new NDKEvent(ndk, wrapForSelf as NostrEvent).publish(relaySet),
   ]);
 }
 

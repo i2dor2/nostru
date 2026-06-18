@@ -15,6 +15,7 @@ vi.mock('@nostr-dev-kit/ndk', async (importOriginal) => {
       ...(raw as object),
       publish: mockPublish,
     })),
+    NDKRelaySet: { fromRelayUrls: vi.fn().mockReturnValue({}) },
   };
 });
 

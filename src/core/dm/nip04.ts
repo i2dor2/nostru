@@ -1,7 +1,8 @@
 import type NDK from '@nostr-dev-kit/ndk';
-import { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NDKEvent, NDKRelaySet } from '@nostr-dev-kit/ndk';
 import { nip04, finalizeEvent, type NostrEvent } from 'nostr-tools';
 import { hexToBytes } from '@noble/hashes/utils.js';
+import { DEFAULT_RELAYS } from '../ndk/config';
 import type { DecryptedMessage } from './types';
 
 export async function sendNip04(
@@ -19,7 +20,8 @@ export async function sendNip04(
     created_at: Math.floor(Date.now() / 1000),
   };
   const event = finalizeEvent(template, privkey);
-  await new NDKEvent(ndk, event as NostrEvent).publish();
+  const relaySet = NDKRelaySet.fromRelayUrls([...DEFAULT_RELAYS], ndk);
+  await new NDKEvent(ndk, event as NostrEvent).publish(relaySet);
 }
 
 export async function decryptNip04(
