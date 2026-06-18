@@ -7,6 +7,7 @@ import {
   IconChevronDown,
   IconUserCircle,
   IconArrowLeft,
+  IconShield,
 } from '@tabler/icons-react';
 import { useState } from 'react';
 import { AccountProvider, useAccount, useNpub, usePrivkey } from './context/AccountContext';
@@ -16,10 +17,11 @@ import { OnboardingScreen } from './screens/OnboardingScreen';
 import { UnlockScreen } from './screens/UnlockScreen';
 import { ThreadView } from './screens/ThreadView';
 import { ProfileView } from './screens/ProfileView';
+import { PermissionsScreen } from './screens/PermissionsScreen';
 import { FeedView } from './feed/FeedView';
 import { truncateNpub, encodePubkey } from '../core/keys';
 
-function AccountSwitcher() {
+function AccountSwitcher({ onConnectedSites }: { onConnectedSites: () => void }) {
   const { session, switchAccount, lock } = useAccount();
   const [open, setOpen] = useState(false);
   const npub = useNpub();
@@ -50,6 +52,12 @@ function AccountSwitcher() {
             </button>
           ))}
           <div className="border-t border-zinc-100 dark:border-zinc-800 mt-1 pt-1">
+            <button
+              onClick={() => { onConnectedSites(); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors"
+            >
+              <IconShield size={12} /> Connected sites
+            </button>
             <button
               onClick={() => { lock(); setOpen(false); }}
               className="w-full text-left px-3 py-2 text-xs text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2 transition-colors"
@@ -82,10 +90,14 @@ function PlaceholderTab({ label, note }: { label: string; note: string }) {
 function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
   const { current, pop, canPop } = useNav();
   const [activeTab, setActiveTab] = useState(0);
+  const [mainView, setMainView] = useState<'app' | 'permissions'>('app');
 
-  const headerLeft = canPop ? (
+  const inPermissions = mainView === 'permissions';
+  const showBack = canPop || inPermissions;
+
+  const headerLeft = showBack ? (
     <button
-      onClick={pop}
+      onClick={() => { if (inPermissions) setMainView('app'); else pop(); }}
       className="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
     >
       <IconArrowLeft size={16} />
@@ -99,10 +111,13 @@ function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
     <div className={`flex flex-col h-full ${narrow ? 'w-full' : 'max-w-xl mx-auto w-full'}`}>
       <header className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
         {headerLeft}
-        <AccountSwitcher />
+        {!inPermissions && <AccountSwitcher onConnectedSites={() => setMainView('permissions')} />}
+        {inPermissions && <span className="text-sm font-medium">Connected sites</span>}
       </header>
 
-      {current.view === 'thread' ? (
+      {inPermissions ? (
+        <PermissionsScreen />
+      ) : current.view === 'thread' ? (
         <ThreadView event={current.event} />
       ) : current.view === 'profile' ? (
         <ProfileView pubkey={current.pubkey} />

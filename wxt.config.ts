@@ -7,7 +7,7 @@ export default defineConfig({
   manifest: {
     name: 'Nostru',
     description: 'Nostr social client for your browser',
-    permissions: ['storage', 'sidePanel'],
+    permissions: ['storage', 'sidePanel', 'windows'],
     action: {},
   },
   vite: () => ({
