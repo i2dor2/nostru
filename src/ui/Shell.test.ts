@@ -27,6 +27,8 @@ vi.mock('./screens/ThreadView', () => ({ ThreadView: vi.fn(() => null) }));
 vi.mock('./screens/ProfileView', () => ({ ProfileView: vi.fn(() => null) }));
 vi.mock('./screens/PermissionsScreen', () => ({ PermissionsScreen: vi.fn(() => null) }));
 vi.mock('./screens/WalletScreen', () => ({ WalletScreen: vi.fn(() => null) }));
+vi.mock('./screens/MessagesScreen', () => ({ MessagesScreen: vi.fn(() => null) }));
+vi.mock('./screens/ConversationView', () => ({ ConversationView: vi.fn(() => null) }));
 vi.mock('./feed/FeedView', () => ({ FeedView: vi.fn(() => null) }));
 vi.mock('../core/keys', () => ({ truncateNpub: vi.fn(s => s), encodePubkey: vi.fn(s => s) }));
 

@@ -20,6 +20,8 @@ import { ThreadView } from './screens/ThreadView';
 import { ProfileView } from './screens/ProfileView';
 import { PermissionsScreen } from './screens/PermissionsScreen';
 import { WalletScreen } from './screens/WalletScreen';
+import { MessagesScreen } from './screens/MessagesScreen';
+import { ConversationView } from './screens/ConversationView';
 import { WalletProvider } from './context/WalletContext';
 import { FeedView } from './feed/FeedView';
 import { truncateNpub, encodePubkey } from '../core/keys';
@@ -125,6 +127,8 @@ function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
         <ThreadView event={current.event} />
       ) : current.view === 'profile' ? (
         <ProfileView pubkey={current.pubkey} />
+      ) : current.view === 'conversation' ? (
+        <ConversationView peerPubkey={current.peerPubkey} />
       ) : (
         <>
           <nav className={`flex border-b border-zinc-100 dark:border-zinc-800 shrink-0 ${narrow ? 'justify-around' : 'gap-1 px-2'}`}>
@@ -147,7 +151,7 @@ function MainContent({ narrow, pubkey }: { narrow: boolean; pubkey: string }) {
           <main className="flex-1 overflow-hidden">
             {activeTab === 0 && <FeedView pubkey={pubkey} />}
             {activeTab === 1 && <PlaceholderTab label="Notifications" note="Coming in M8" />}
-            {activeTab === 2 && <PlaceholderTab label="Messages" note="Coming in M7" />}
+            {activeTab === 2 && <MessagesScreen />}
             {activeTab === 3 && <PlaceholderTab label="Search" note="Coming in M8" />}
             {activeTab === 4 && <WalletScreen />}
           </main>
