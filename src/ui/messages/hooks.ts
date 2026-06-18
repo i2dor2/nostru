@@ -76,7 +76,7 @@ export function useSendDM() {
   return useCallback(async (
     recipientPubkey: string,
     content: string,
-    protocol: 'nip17' | 'nip04' = 'nip17',
+    protocol: 'nip17' | 'nip04' = 'nip04',
   ) => {
     if (!ndk) throw new Error('Not connected');
     if (session.status !== 'unlocked') throw new Error('Wallet locked');

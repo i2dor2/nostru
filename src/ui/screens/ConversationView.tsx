@@ -42,8 +42,9 @@ export function ConversationView({ peerPubkey }: { peerPubkey: string }) {
   const myPubkey = session.status === 'unlocked' ? session.account.pubkey : '';
   const conversation = conversations.find(c => c.peerPubkey === peerPubkey);
   const messages = conversation?.messages ?? [];
-  // Reply using the same protocol the peer used, so older NIP-04 clients see our replies.
-  const peerProtocol = [...messages].reverse().find(m => m.from === peerPubkey)?.protocol ?? 'nip17';
+  // Default to NIP-04 for universal compatibility; upgrade to NIP-17 only if the peer
+  // has already demonstrated they support it by sending us a gift wrap.
+  const peerProtocol = [...messages].reverse().find(m => m.from === peerPubkey)?.protocol ?? 'nip04';
   const display = profile?.displayName ?? profile?.name ?? truncateNpub(encodePubkey(peerPubkey));
 
   useEffect(() => {
