@@ -1,0 +1,9 @@
+{
+  "reportExplicitAny": "none",
+  "reportAny": "none",
+  "reportUnusedCallResult": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownVariableType": "none"
+}

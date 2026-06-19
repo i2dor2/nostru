@@ -32,3 +32,32 @@ export function deriveNspAddress(pubkeyHex: string): string {
   const payload = new Uint8Array([0x00, ...ScanPub.toBytes(true), ...SpendPub.toBytes(true)]);
   return bech32m.encode('sp', bech32m.toWords(payload), 1000);
 }
+
+// These are used only by background.ts when talking to the native host.
+// They are never stored, logged, or displayed - only passed in-memory.
+
+function derivePrivOffset(privkeyHex: string, tag: string): bigint {
+  const n = secp256k1.Point.Fn.ORDER;
+  const G = secp256k1.Point.BASE;
+  const d = BigInt('0x' + privkeyHex);
+  const P = G.multiply(d);
+  const Pbytes = P.toBytes(true);
+  const t = BigInt('0x' + bytesToHex(taggedHash(tag, Pbytes))) % n;
+  return (d + t) % n;
+}
+
+export function deriveScanPriv(privkeyHex: string): string {
+  return derivePrivOffset(privkeyHex, 'nostr-sp/scan').toString(16).padStart(64, '0');
+}
+
+export function deriveSpendPriv(privkeyHex: string): string {
+  return derivePrivOffset(privkeyHex, 'nostr-sp/spend').toString(16).padStart(64, '0');
+}
+
+export function deriveSpendPub(pubkeyHex: string): string {
+  const n = secp256k1.Point.Fn.ORDER;
+  const G = secp256k1.Point.BASE;
+  const P = secp256k1.Point.fromHex('02' + pubkeyHex);
+  const t_spend = BigInt('0x' + bytesToHex(taggedHash('nostr-sp/spend', P.toBytes(true)))) % n;
+  return bytesToHex(P.add(G.multiply(t_spend)).toBytes(true));
+}

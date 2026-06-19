@@ -1,8 +1,19 @@
 import { executeNip07 } from '../src/core/nip07/execute';
 import { getPermission } from '../src/core/store/permissions';
 import type { NIP07Method, ApprovalResult, PendingApproval, BridgeNip07Request } from '../src/core/nip07/types';
+import { deriveScanPriv, deriveSpendPriv, deriveSpendPub } from '../src/core/nsp';
 
-type IncomingMessage = BridgeNip07Request | ApprovalResult;
+interface SpRequest {
+  type: 'sp:identify' | 'sp:scan' | 'sp:sweep';
+  server?: string;
+  birthdayHeight?: number;
+  tipHeight?: number;
+  utxos?: unknown[];
+  destination?: string;
+  feeRate?: number;
+}
+
+type IncomingMessage = BridgeNip07Request | ApprovalResult | SpRequest;
 
 const pendingApprovals = new Map<string, {
   resolve: (approved: boolean) => void;
@@ -210,6 +221,15 @@ export default defineBackground(() => {
           else p.reject(new Error('User denied'));
         }
       }
+
+      if (msg.type === 'sp:identify' || msg.type === 'sp:scan' || msg.type === 'sp:sweep') {
+        handleSpRequest(msg as SpRequest)
+          .then(result => sendResponse({ result }))
+          .catch((err: unknown) =>
+            sendResponse({ error: err instanceof Error ? err.message : String(err) }),
+          );
+        return true;
+      }
     },
   );
 
@@ -245,6 +265,64 @@ export default defineBackground(() => {
     checkNotifications().catch(() => { /* silent failure */ });
   });
 });
+
+function callNativeHost(message: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const port = chrome.runtime.connectNative('nostru.sp');
+
+    port.onMessage.addListener((msg: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      port.disconnect();
+      resolve(msg);
+    });
+
+    port.onDisconnect.addListener(() => {
+      if (settled) return;
+      settled = true;
+      const err = chrome.runtime.lastError;
+      reject(new Error(err?.message ?? 'Native host disconnected unexpectedly'));
+    });
+
+    port.postMessage(message);
+  });
+}
+
+async function handleSpRequest(req: SpRequest): Promise<unknown> {
+  if (req.type === 'sp:identify') {
+    return callNativeHost({ action: 'identify' });
+  }
+
+  const { activeKey } = await chrome.storage.session.get('activeKey');
+  if (!activeKey) throw new Error('Nostru locked - unlock first');
+  const privHex = activeKey as string;
+
+  if (req.type === 'sp:scan') {
+    const pubkey = await getActivePubkey();
+    if (!pubkey) throw new Error('No active account');
+    return callNativeHost({
+      action:          'scan',
+      scan_priv:       deriveScanPriv(privHex),
+      spend_pub:       deriveSpendPub(pubkey),
+      server:          req.server ?? 'https://silentpayments.xyz/api',
+      birthday_height: req.birthdayHeight ?? 0,
+      tip_height:      req.tipHeight ?? 0,
+    });
+  }
+
+  if (req.type === 'sp:sweep') {
+    return callNativeHost({
+      action:      'sweep',
+      spend_priv:  deriveSpendPriv(privHex),
+      utxos:       req.utxos ?? [],
+      destination: req.destination ?? '',
+      fee_rate:    req.feeRate ?? 10,
+    });
+  }
+
+  throw new Error('Unknown sp action');
+}
 
 async function handleNip07(msg: BridgeNip07Request): Promise<unknown> {
   const { activeKey } = await chrome.storage.session.get('activeKey');
