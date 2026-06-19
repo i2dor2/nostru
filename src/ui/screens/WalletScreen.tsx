@@ -345,6 +345,15 @@ function SpSection() {
               >
                 <IconPencil size={12} />
               </button>
+              {customSpAddress && (
+                <button
+                  onClick={async () => { await setCustomSpAddress(pubkey, null); setCustomSpAddressState(null); }}
+                  className="text-zinc-400 hover:text-red-400 shrink-0"
+                  title="Reset to derived address"
+                >
+                  <IconX size={12} />
+                </button>
+              )}
             </div>
           )}
           {editingSpAddr && (
