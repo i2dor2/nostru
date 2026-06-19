@@ -156,6 +156,9 @@ function SpSection() {
   const [txid, setTxid] = useState('');
   const [scanningTx, setScanningTx] = useState(false);
   const [scanTxErr, setScanTxErr] = useState('');
+  const [explorer, setExplorer] = useState('https://mempool.space');
+  const [scanningEsplora, setScanningEsplora] = useState(false);
+  const [scanEsploraErr, setScanEsploraErr] = useState('');
   const [discovering, setDiscovering] = useState(false);
   const [discoverErr, setDiscoverErr] = useState('');
   const [utxos, setUtxos] = useState<SpUtxo[]>([]);
@@ -240,6 +243,29 @@ function SpSection() {
       setScanningTx(false);
     }
   }, [txid]);
+
+  const handleScanEsplora = useCallback(async () => {
+    setScanEsploraErr('');
+    setUtxos([]);
+    setSweepResult(null);
+    setScanningEsplora(true);
+    try {
+      const res = await sendToBackground({
+        type:           'sp:scan_esplora',
+        explorer:       explorer.trim() || 'https://mempool.space',
+        birthdayHeight: birthday ? parseInt(birthday, 10) : 0,
+        tipHeight:      tip      ? parseInt(tip, 10)      : 0,
+      });
+      if (res?.error) { setScanEsploraErr(res.error); return; }
+      const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
+      if (data?.status === 'ok') setUtxos(data.utxos ?? []);
+      else setScanEsploraErr(data?.error ?? 'Unexpected response from native host');
+    } catch (e) {
+      setScanEsploraErr(e instanceof Error ? e.message : 'Scan failed');
+    } finally {
+      setScanningEsplora(false);
+    }
+  }, [explorer, birthday, tip]);
 
   const handleDiscover = useCallback(async () => {
     if (!ndk || session.status !== 'unlocked') return;
@@ -455,6 +481,15 @@ function SpSection() {
                   className="w-full px-2 py-1.5 text-xs font-mono rounded border border-zinc-200 dark:border-zinc-700 bg-transparent focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
+              <div className="space-y-2">
+                <label className="block text-xs text-zinc-400">Esplora endpoint <span className="text-zinc-400 font-normal">(max 20 blocks, no index needed)</span></label>
+                <input
+                  type="url"
+                  value={explorer}
+                  onChange={e => setExplorer(e.target.value)}
+                  className="w-full px-2 py-1.5 text-xs font-mono rounded border border-zinc-200 dark:border-zinc-700 bg-transparent focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
               <div className="flex gap-2">
                 <div className="flex-1">
                   <label className="block text-xs text-zinc-400 mb-1">Birthday height</label>
@@ -497,6 +532,16 @@ function SpSection() {
                   : <><IconScan size={14} /> Scan for payments</>}
               </button>
               {scanErr && <p className="text-xs text-red-500">{scanErr}</p>}
+              <button
+                onClick={() => void handleScanEsplora()}
+                disabled={scanningEsplora}
+                className="w-full py-2 rounded-lg border border-accent text-accent text-sm font-medium hover:bg-accent/10 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {scanningEsplora
+                  ? <><IconLoader2 size={14} className="animate-spin" /> Scanning blocks...</>
+                  : <><IconScan size={14} /> Scan via Esplora</>}
+              </button>
+              {scanEsploraErr && <p className="text-xs text-red-500">{scanEsploraErr}</p>}
 
               <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
                 <label className="block text-xs text-zinc-400">Or scan a specific transaction</label>

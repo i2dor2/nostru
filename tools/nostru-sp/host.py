@@ -2,10 +2,11 @@
 """
 Nostru Silent Payments native host.
 Protocol: Chrome native messaging (4-byte LE length prefix).
-Actions : identify | scan | sweep
+Actions : identify | scan | scan_tx | scan_esplora | sweep
 Deps    : zero external packages; pure Python 3.9+ stdlib only.
 """
 import sys, json, struct, hashlib, os, urllib.request, urllib.error
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 # ── secp256k1 ──────────────────────────────────────────────────────────────
@@ -307,62 +308,133 @@ def sp_tweak_from_inputs(eligible: list[tuple[bytes, bytes, bytes]]) -> str:
     return point_to_bytes(tweak_pt).hex()
 
 
-def action_scan_tx(req: dict[str, Any]) -> dict[str, Any]:
-    b_scan    = int(req['scan_priv'], 16)
-    B_spend_b = bytes.fromhex(req['spend_pub'])
-    txid      = req.get('txid', '').strip()
-    if not txid:
-        return {'status': 'error', 'error': 'txid required'}
+def _fetch_json(url: str) -> Any:
+    req = urllib.request.Request(url, headers={
+        'Accept': 'application/json', 'User-Agent': 'nostru-sp/1.0'})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())  # type: ignore[no-any-return]
 
-    try:
-        tx = fetch_tx(txid)
-    except RuntimeError as e:
-        return {'status': 'error', 'error': str(e)}
 
+def _fetch_text(url: str) -> str:
+    req = urllib.request.Request(url, headers={
+        'Accept': 'text/plain', 'User-Agent': 'nostru-sp/1.0'})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return r.read().decode().strip()
+
+
+def check_sp_in_tx(tx: dict[str, Any], b_scan: int, B_spend_b: bytes) -> list[dict[str, Any]]:
+    """BIP-352 receive check on a single transaction. Returns matched UTXOs."""
     eligible = extract_eligible_inputs(tx.get('vin', []))
     if not eligible:
-        return {'status': 'error', 'error': 'No eligible inputs (need P2WPKH, P2SH-P2WPKH, or P2TR key-path)'}
-
-    try:
-        tweak_hex = sp_tweak_from_inputs(eligible)
-        shared    = sp_shared_secret(b_scan, tweak_hex)
-    except Exception as e:
-        return {'status': 'error', 'error': f'ECDH failed: {e}'}
-
-    p2tr_outs: list[tuple[int, bytes, dict[str, Any]]] = []
+        return []
+    p2tr: list[tuple[int, bytes, dict[str, Any]]] = []
     for i, out in enumerate(tx.get('vout', [])):
-        spk = bytes.fromhex(out.get('scriptpubkey', ''))
+        try:
+            spk = bytes.fromhex(out.get('scriptpubkey', ''))
+        except ValueError:
+            continue
         if len(spk) == 34 and spk[:2] == b'\x51\x20':
-            p2tr_outs.append((i, spk[2:], out))
-
+            p2tr.append((i, spk[2:], out))
+    if not p2tr:
+        return []
+    try:
+        shared = sp_shared_secret(b_scan, sp_tweak_from_inputs(eligible))
+    except Exception:
+        return []
     bh = tx.get('status', {}).get('block_height', 0)
     found: list[dict[str, Any]] = []
     matched: set[int] = set()
     k = 0
     while True:
         try:
-            P_k = sp_output_pubkey(shared, B_spend_b, k)
+            x_k = sp_output_pubkey(shared, B_spend_b, k)[1:]
         except Exception:
             break
-        x_k = P_k[1:]
-        m = next((idx for idx, (vi, x_only, _) in enumerate(p2tr_outs)
-                  if vi not in matched and x_only == x_k), None)
+        m = next((idx for idx, (vi, x, _) in enumerate(p2tr)
+                  if vi not in matched and x == x_k), None)
         if m is None:
             break
-        vi, x_only, out = p2tr_outs[m]
+        vi, x_only, out = p2tr[m]
         matched.add(vi)
-        found.append({
-            'txid':          txid,
-            'vout':          vi,
-            'value':         out['value'],
-            'x_only_pubkey': x_only.hex(),
-            'k':             k,
-            'block_height':  bh,
-            'shared_secret': shared.hex(),
-        })
+        found.append({'txid': tx['txid'], 'vout': vi, 'value': out['value'],
+                      'x_only_pubkey': x_only.hex(), 'k': k, 'block_height': bh,
+                      'shared_secret': shared.hex()})
         k += 1
+    return found
+
+
+_ESPLORA_MAX_BLOCKS = 20
+_ESPLORA_WORKERS    = 4
+
+
+def action_scan_esplora(req: dict[str, Any]) -> dict[str, Any]:
+    b_scan    = int(req['scan_priv'], 16)
+    B_spend_b = bytes.fromhex(req['spend_pub'])
+    birthday  = int(req.get('birthday_height', 0))
+    tip_raw   = int(req.get('tip_height', 0))
+    explorer  = req.get('explorer', 'https://mempool.space').rstrip('/')
+
+    if not isinstance(explorer, str) or not explorer.startswith('https://'):
+        return {'status': 'error', 'error': 'explorer must be an https:// URL'}
+
+    if tip_raw == 0:
+        try:
+            tip_raw = int(_fetch_text(f'{explorer}/api/blocks/tip/height'))
+        except Exception as e:
+            return {'status': 'error', 'error': f'Could not fetch chain tip: {e}'}
+    tip = tip_raw
+
+    if tip < birthday:
+        return {'status': 'error', 'error': f'tip ({tip}) < birthday ({birthday})'}
+
+    n_blocks = tip - birthday + 1
+    if n_blocks > _ESPLORA_MAX_BLOCKS:
+        return {
+            'status': 'error',
+            'error': (f'Range too large ({n_blocks} blocks, max {_ESPLORA_MAX_BLOCKS}). '
+                      f'Narrow the range or use the SP index server for larger scans.'),
+        }
+
+    found: list[dict[str, Any]] = []
+
+    for height in range(birthday, tip + 1):
+        try:
+            bh_hash  = _fetch_text(f'{explorer}/api/block-height/{height}')
+            info     = _fetch_json(f'{explorer}/api/block/{bh_hash}')
+            tx_count = int(info.get('tx_count', 0))
+        except Exception as e:
+            return {'status': 'error', 'error': f'Block {height} fetch failed: {e}'}
+
+        page_starts = list(range(0, tx_count, 25))
+
+        def _get_page(start: int, _h: str = bh_hash) -> list[dict[str, Any]]:
+            try:
+                url = f'{explorer}/api/block/{_h}/txs' + (f'/{start}' if start else '')
+                return _fetch_json(url)  # type: ignore[no-any-return]
+            except Exception:
+                return []
+
+        with ThreadPoolExecutor(max_workers=_ESPLORA_WORKERS) as pool:
+            for page in pool.map(_get_page, page_starts):
+                for tx in page:
+                    found.extend(check_sp_in_tx(tx, b_scan, B_spend_b))
 
     return {'status': 'ok', 'utxos': found}
+
+
+def action_scan_tx(req: dict[str, Any]) -> dict[str, Any]:
+    b_scan    = int(req['scan_priv'], 16)
+    B_spend_b = bytes.fromhex(req['spend_pub'])
+    txid      = req.get('txid', '').strip()
+    if not txid:
+        return {'status': 'error', 'error': 'txid required'}
+    try:
+        tx = fetch_tx(txid)
+    except RuntimeError as e:
+        return {'status': 'error', 'error': str(e)}
+    if not extract_eligible_inputs(tx.get('vin', [])):
+        return {'status': 'error', 'error': 'No eligible inputs (need P2WPKH, P2SH-P2WPKH, or P2TR key-path)'}
+    return {'status': 'ok', 'utxos': check_sp_in_tx(tx, b_scan, B_spend_b)}
 
 
 # ── Sweep transaction builder ──────────────────────────────────────────────
@@ -513,10 +585,11 @@ def action_sweep(req: dict[str, Any]) -> dict[str, Any]:
 
 
 ACTIONS = {
-    'identify': action_identify,
-    'scan':     action_scan,
-    'scan_tx':  action_scan_tx,
-    'sweep':    action_sweep,
+    'identify':     action_identify,
+    'scan':         action_scan,
+    'scan_tx':      action_scan_tx,
+    'scan_esplora': action_scan_esplora,
+    'sweep':        action_sweep,
 }
 
 
