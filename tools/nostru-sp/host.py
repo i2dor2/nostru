@@ -246,8 +246,13 @@ def fetch_tx(txid: str) -> dict[str, Any]:
     })
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read())  # type: ignore[no-any-return]
-    except urllib.error.URLError as e:
+            data = json.loads(r.read())
+            if not isinstance(data, dict):
+                raise RuntimeError(f'Unexpected response: {type(data).__name__}')
+            return data
+    except RuntimeError:
+        raise
+    except Exception as e:
         raise RuntimeError(f'Could not fetch tx from mempool.space: {e}')
 
 
@@ -257,7 +262,7 @@ def extract_eligible_inputs(vin: list[dict[str, Any]]) -> list[tuple[bytes, byte
     for inp in vin:
         txid_le = bytes.fromhex(inp['txid'])[::-1]
         vout_le  = inp['vout'].to_bytes(4, 'little')
-        prevout  = inp.get('prevout', {})
+        prevout  = inp.get('prevout') or {}
         ptype    = prevout.get('scriptpubkey_type', '')
         witness  = inp.get('witness', [])
 
@@ -311,15 +316,21 @@ def sp_tweak_from_inputs(eligible: list[tuple[bytes, bytes, bytes]]) -> str:
 def _fetch_json(url: str) -> Any:
     req = urllib.request.Request(url, headers={
         'Accept': 'application/json', 'User-Agent': 'nostru-sp/1.0'})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.loads(r.read())  # type: ignore[no-any-return]
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        raise RuntimeError(f'Fetch failed: {e}')
 
 
 def _fetch_text(url: str) -> str:
     req = urllib.request.Request(url, headers={
         'Accept': 'text/plain', 'User-Agent': 'nostru-sp/1.0'})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return r.read().decode().strip()
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.read().decode().strip()
+    except Exception as e:
+        raise RuntimeError(f'Fetch failed: {e}')
 
 
 def check_sp_in_tx(tx: dict[str, Any], b_scan: int, B_spend_b: bytes) -> list[dict[str, Any]]:
@@ -341,7 +352,7 @@ def check_sp_in_tx(tx: dict[str, Any], b_scan: int, B_spend_b: bytes) -> list[di
         shared = sp_shared_secret(b_scan, sp_tweak_from_inputs(eligible))
     except Exception:
         return []
-    bh = tx.get('status', {}).get('block_height', 0)
+    bh = (tx.get('status') or {}).get('block_height', 0)
     found: list[dict[str, Any]] = []
     matched: set[int] = set()
     k = 0
@@ -401,6 +412,8 @@ def action_scan_esplora(req: dict[str, Any]) -> dict[str, Any]:
         try:
             bh_hash  = _fetch_text(f'{explorer}/api/block-height/{height}')
             info     = _fetch_json(f'{explorer}/api/block/{bh_hash}')
+            if not isinstance(info, dict):
+                raise RuntimeError(f'Unexpected block info for height {height}')
             tx_count = int(info.get('tx_count', 0))
         except Exception as e:
             return {'status': 'error', 'error': f'Block {height} fetch failed: {e}'}
@@ -410,7 +423,8 @@ def action_scan_esplora(req: dict[str, Any]) -> dict[str, Any]:
         def _get_page(start: int, _h: str = bh_hash) -> list[dict[str, Any]]:
             try:
                 url = f'{explorer}/api/block/{_h}/txs' + (f'/{start}' if start else '')
-                return _fetch_json(url)  # type: ignore[no-any-return]
+                result = _fetch_json(url)
+                return result if isinstance(result, list) else []
             except Exception:
                 return []
 
