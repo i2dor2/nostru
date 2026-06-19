@@ -18,4 +18,6 @@ One thing I'd add to the threat model: the identity-binding deterrent only works
 
 Overall, trbouma's framing of "donor entrapment" is the right vocabulary for this class of attack. It belongs in any serious NSP design discussion.
 
-Nostru is the first browser extension to combine Nostr identity with BIP-352 Silent Payments, with local-only scanning via native host. Repo: https://github.com/i2dor2/nostru
+Nostru is the first browser extension to combine Nostr identity with BIP-352 Silent Payments, with local-only scanning via native host. Three scanning backends are supported: a BIP-352 REST index, a block explorer (Esplora), and Frigate-compatible Electrum SP servers. In the Frigate case the server streams pre-aggregated input tweaks - it never sees the scan key. The same architectural constraint holds regardless of which backend is chosen.
+
+Repo: https://github.com/i2dor/nostru
