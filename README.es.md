@@ -375,3 +375,9 @@ La direccion SP derivada de `nsec2` es completamente independiente de tu npub so
 **Lo que no puedes deshacer**
 
 La correspondencia npub-a-direccion-SP es determinista y permanente. Si ya has publicado tu npub ampliamente, cualquier remitente puede calcular tu direccion SP y podra hacerlo de forma permanente. No existe mecanismo de rotacion excepto rotar el npub mismo.
+
+---
+
+## Contacto
+
+Nostr: [npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7](https://njump.me/npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7)

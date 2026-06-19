@@ -375,3 +375,9 @@ O endereco SP derivado de `nsec2` e completamente separado do seu npub social. O
 **O que voce nao pode desfazer**
 
 O mapeamento de npub para endereco SP e deterministico e permanente. Se voce ja publicou amplamente o seu npub, qualquer remetente pode calcular o seu endereco SP e podera faze-lo permanentemente. Nao existe mecanismo de rotacao exceto rotacionar o proprio npub.
+
+---
+
+## Contato
+
+Nostr: [npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7](https://njump.me/npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7)

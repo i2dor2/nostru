@@ -375,3 +375,9 @@ Adresa SP derivata din `nsec2` este complet separata de npub-ul tau social. Expe
 **Ce nu poti anula**
 
 Corespondenta npub-la-adresa-SP este determinista si permanenta. Daca ti-ai publicat deja npub-ul pe scara larga, orice expeditor poate deja calcula adresa ta SP si va putea face asta permanent. Nu exista niciun mecanism de rotatie in afara rotatiei npub-ului insusi.
+
+---
+
+## Contact
+
+Nostr: [npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7](https://njump.me/npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7)

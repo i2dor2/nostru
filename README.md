@@ -382,3 +382,9 @@ The SP address derived from `nsec2` is completely separate from your social npub
 **What you cannot undo**
 
 The npub-to-SP-address mapping is deterministic and permanent. If you have already published your npub widely, every sender can already compute your SP address and will be able to do so permanently. There is no rotation mechanism short of rotating the npub itself.
+
+---
+
+## Contact
+
+Nostr: [npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7](https://njump.me/npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7)

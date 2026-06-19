@@ -375,3 +375,9 @@ Die von `nsec2` abgeleitete SP-Adresse ist vollstaendig von deinem sozialen npub
 **Was du nicht rueckgaengig machen kannst**
 
 Die npub-zu-SP-Adress-Abbildung ist deterministisch und permanent. Wenn du deinen npub bereits weit verbreitet hast, kann jeder Absender deine SP-Adresse bereits berechnen und wird dies dauerhaft koennen. Es gibt keinen Rotationsmechanismus ausser dem Rotieren des npub selbst.
+
+---
+
+## Kontakt
+
+Nostr: [npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7](https://njump.me/npub17ph4attxued865ehp9j6dtfhpzj9az55wvur8dzq6t4y633qveuqvn9wf7)
