@@ -296,6 +296,8 @@ def action_scan(req: dict[str, Any]) -> dict[str, Any]:
     B_spend_hex = req['spend_pub']              # 33-byte compressed hex
     B_spend_b   = bytes.fromhex(B_spend_hex)
     server      = req.get('server', 'https://silentpayments.xyz/api')
+    if not isinstance(server, str) or not server.startswith('https://'):
+        return {'status': 'error', 'error': 'server must be an https:// URL'}
     birthday    = int(req.get('birthday_height', 0))
     tip         = int(req.get('tip_height', birthday + 1000))
 
@@ -377,11 +379,15 @@ ACTIONS = {
 
 # ── Native messaging protocol ──────────────────────────────────────────────
 
+_MAX_MSG = 1_048_576  # Chrome native messaging hard cap: 1 MB
+
 def recv() -> dict[str, Any]:
     header = sys.stdin.buffer.read(4)
     if len(header) < 4:
         raise EOFError
     length = struct.unpack('<I', header)[0]
+    if length > _MAX_MSG:
+        raise ValueError(f'message too large: {length} bytes')
     return json.loads(sys.stdin.buffer.read(length))  # type: ignore[no-any-return]
 
 

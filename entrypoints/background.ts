@@ -58,6 +58,12 @@ async function getActivePubkey(): Promise<string | null> {
   return store?.activeId ?? store?.accounts[0]?.pubkey ?? null;
 }
 
+async function getActivePrivHex(): Promise<string | null> {
+  const data = await chrome.storage.session.get('nostru:session');
+  const s = data['nostru:session'] as { hex: string } | undefined;
+  return s?.hex ?? null;
+}
+
 async function getSavedRelays(): Promise<string[]> {
   const result = await chrome.storage.local.get(RELAYS_KEY);
   const saved = result[RELAYS_KEY] as string[] | undefined;
@@ -294,9 +300,8 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
     return callNativeHost({ action: 'identify' });
   }
 
-  const { activeKey } = await chrome.storage.session.get('activeKey');
-  if (!activeKey) throw new Error('Nostru locked - unlock first');
-  const privHex = activeKey as string;
+  const privHex = await getActivePrivHex();
+  if (!privHex) throw new Error('Nostru locked - unlock first');
 
   if (req.type === 'sp:scan') {
     const pubkey = await getActivePubkey();
@@ -325,17 +330,29 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
 }
 
 async function handleNip07(msg: BridgeNip07Request): Promise<unknown> {
-  const { activeKey } = await chrome.storage.session.get('activeKey');
-  if (!activeKey) throw new Error('Wallet locked - unlock Nostru first');
-
   const perm = await getPermission(msg.origin);
   if (perm === 'deny') throw new Error('Permission denied for this site');
+
+  // getPublicKey and getRelays don't need the private key
+  if (msg.method === 'getPublicKey') {
+    const pubkey = await getActivePubkey();
+    if (!pubkey) throw new Error('No active account');
+    return pubkey;
+  }
+  if (msg.method === 'getRelays') {
+    const data = await chrome.storage.local.get('relays');
+    return (data.relays as Record<string, { read: boolean; write: boolean }>) ?? {};
+  }
+
+  const privHex = await getActivePrivHex();
+  if (!privHex) throw new Error('Wallet locked - unlock Nostru first');
+
   if (perm !== 'allow') {
     const approved = await promptApproval(msg.id, msg.origin, msg.method);
     if (!approved) throw new Error('User denied');
   }
 
-  return executeNip07(msg.method, msg.params, activeKey as string);
+  return executeNip07(msg.method, msg.params, privHex);
 }
 
 async function promptApproval(

@@ -10,3 +10,5 @@ dist/
 .claude/
 CLAUDE.md
 PROMPT.md
+__pycache__/
+*.pyc

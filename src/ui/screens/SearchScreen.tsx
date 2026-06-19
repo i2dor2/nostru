@@ -20,7 +20,7 @@ function dateToUnix(dateStr: string): number | undefined {
   return isNaN(ms) ? undefined : Math.floor(ms / 1000);
 }
 
-export function buildFilter(query: string, kind: SearchKind, author: string, since: string, until: string): NDKFilter {
+export function buildFilter(query: string, kind: SearchKind = 'notes', author = '', since = '', until = ''): NDKFilter {
   const trimmed = query.trim();
   const sinceTs = dateToUnix(since);
   const untilTs = dateToUnix(until);

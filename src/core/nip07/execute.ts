@@ -21,12 +21,15 @@ export async function executeNip07(
       return getPublicKey(privkey);
 
     case 'signEvent': {
-      const { event } = params as { event: NostrEventTemplate };
+      const ev = (params as { event?: unknown })?.event as Partial<NostrEventTemplate> | undefined;
+      if (!ev || typeof ev.kind !== 'number' || typeof ev.content !== 'string' || !Array.isArray(ev.tags)) {
+        throw new Error('signEvent: event must have numeric kind, string content, and array tags');
+      }
       return finalizeEvent({
-        kind: event.kind,
-        content: event.content,
-        tags: event.tags ?? [],
-        created_at: event.created_at ?? Math.floor(Date.now() / 1000),
+        kind: ev.kind,
+        content: ev.content,
+        tags: ev.tags as string[][],
+        created_at: typeof ev.created_at === 'number' ? ev.created_at : Math.floor(Date.now() / 1000),
       }, privkey);
     }
 
