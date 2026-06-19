@@ -36,6 +36,66 @@ A Nostr social client built as a browser sidePanel extension (Chrome MV3). It le
 
 ---
 
+## Every Nostr account is a Bitcoin Silent Payment receiver
+
+Nostr identities are secp256k1 keypairs - the same elliptic curve that Bitcoin uses. BIP-352 (Silent Payments) is also built on secp256k1. This means the derivation is not a hack or a workaround: it is a direct mathematical consequence of shared curve arithmetic.
+
+The derivation from any Nostr public key (`npub`) to a Silent Payment address (`sp1...`) works like this:
+
+| Step | Operation | Who can do it |
+|------|-----------|--------------|
+| 1 | Take the x-only Nostr pubkey (32 bytes, even-Y per BIP-340) | Anyone |
+| 2 | Compute `ScanPub = P + tagged_hash("nostr-sp/scan", P_compressed) * G` | Anyone |
+| 3 | Compute `SpendPub = P + tagged_hash("nostr-sp/spend", P_compressed) * G` | Anyone |
+| 4 | Encode as `sp1... = bech32m([0x00] + ScanPub_33 + SpendPub_33)` | Anyone |
+| 5 | Detect incoming payments (derive `scan_priv`, scan blocks via ECDH) | nsec holder only |
+| 6 | Spend received funds (derive `spend_priv + t_k`, sign sweep tx) | nsec holder only |
+
+The key property: steps 1-4 require only the public key and are deterministic. **Anyone who can find your npub can pay you, without ever asking for an address, without you being online, and without any on-chain link between two payments to you.**
+
+This means:
+
+- **Every Nostr user is already a Bitcoin SP receiver,** whether or not they know it. The address exists the moment the keypair exists.
+- **The Nostr social graph doubles as a Bitcoin payment directory.** If you follow someone, you can pay them silently just from their profile - without them ever sharing a Bitcoin address.
+- **Payments survive key rotation workarounds.** A sender computes the address once from the npub and the resulting UTXOs are indistinguishable from any other P2TR output on-chain - no address reuse, no clustering, no linking across senders.
+- **The recipient does not need to be running Nostru.** Any BIP-352-compatible wallet can send to an sp1 address derived from an npub. The recipient can scan later with Nostru whenever they choose.
+
+Nostru makes this visible: open any profile in the extension and the `sp1...` address appears automatically, computed live in your browser from nothing more than the account's public key.
+
+---
+
+## Why an extension and not a website
+
+Silent Payment scanning requires access to a scan private key that is root-equivalent to your Nostr private key. A website - even one served over HTTPS or from localhost - cannot handle this safely. A browser extension can.
+
+| Capability | Extension | Website |
+|------------|-----------|---------|
+| Memory-only key storage inaccessible to page scripts | `chrome.storage.session` | No equivalent; JS globals are reachable by any injected script |
+| Talk to a local native process | `chrome.runtime.connectNative()` | Not available - this API is extension-only |
+| Inject a NIP-07 signer into every page | Content scripts with `MAIN` world access | Would require a browser extension anyway |
+| Run background tasks without a visible tab | Service worker + `chrome.alarms` | Requires a server or always-open tab |
+| Sidebar alongside any web page | `chrome.sidePanel` | Impossible without an extension |
+| Per-origin permission system for key access | `chrome.permissions` + custom store | No standard equivalent |
+
+**The critical blocker for a website doing NSP is Native Messaging.** `chrome.runtime.connectNative()` is only callable from extension service workers and extension pages - not from any web origin, not even `localhost`. There is no workaround.
+
+Without Native Messaging, a website doing NSP scanning has exactly two options:
+
+1. **Send the scan key to a server.** The scan private key is `nsec + tagged_hash(...)` - whoever holds it can monitor every Silent Payment output addressed to you, forever. Giving it to a server converts a privacy-preserving payment protocol into a surveillance tool.
+
+2. **Scan in the browser tab with JavaScript.** BIP-352 scanning requires secp256k1 scalar multiplication for every transaction in every block since the birthday height. At typical network throughput (thousands of transactions per block, hundreds of blocks to scan), this would take hours in a browser tab - and stop the moment the tab closes.
+
+The extension model resolves both problems cleanly:
+
+- The background service worker derives `scan_priv` in-memory from the session-stored `nsec`.
+- It passes the key directly to the local `host.py` process via a Unix pipe (Chrome Native Messaging). The pipe is private to the OS process pair.
+- `host.py` performs the ECDH computation locally, queries only the per-block tweak data (not the key) from the index server, and returns only matching UTXOs.
+- The scan key is never written anywhere. If the browser closes mid-scan, it is gone.
+
+This is only possible because the extension has `chrome.runtime.connectNative()`. A website, a PWA, and a local web app served from `file://` or `localhost` all lack this capability.
+
+---
+
 ## Why Nostru is a first
 
 **No browser extension has ever combined a Nostr social identity with Bitcoin Silent Payments before.**
