@@ -64,6 +64,37 @@ Nostru hace esto visible: abre cualquier perfil en la extension y la direccion `
 
 ---
 
+## Ventajas y desventajas
+
+NSP es potente pero no neutral. Estas son las ventajas y desventajas honestas.
+
+**Ventajas**
+
+| Lo que ganas | Por que importa |
+|-------------|----------------|
+| Cero configuracion para el receptor | La direccion SP existe en el momento en que existe el par de claves. El receptor no necesita estar en linea, ejecutar software ni conocer NSP. |
+| Alcance universal | Cada usuario de Nostr ya es un receptor de Bitcoin. No se requiere registro. |
+| Desvinculabilidad on-chain | Multiples pagos al mismo npub producen outputs P2TR sin correlacion. El analisis en cadena no puede agruparlos. |
+| Sin reutilizacion de direcciones | Cada pago produce un output unico via ECDH. |
+| Grafo social como directorio de pagos | Sigue a alguien en Nostr, pagale silenciosamente - sin intercambio de direcciones. |
+| Sin custodio, sin canal | A diferencia de Lightning, no se requiere liquidez de canal ni nodo en linea. |
+
+**Desventajas**
+
+| Lo que cedes | Por que importa |
+|-------------|----------------|
+| Consentimiento del receptor | Puedes recibir Bitcoin de cualquiera - incluidas direcciones sancionadas o fondos ilegales - sin saberlo. En algunas jurisdicciones esto crea exposicion legal. Tim Bouma llamo a esto **culpabilidad del receptor** (receiver culpability). |
+| Deniabilidad del remitente | Si el receptor revela su identidad real (por ejemplo, es doxxeado), el pago del remitente queda permanentemente vinculado a esa persona. Tim Bouma llamo a esto **trampa del donante** (donor entrapment). |
+| Sin opt-out sin rotar claves | El mapeo npub-a-SP es permanente. Para dejar de recibir hay que rotar el npub, lo que rompe el grafo social. |
+| Sensibilidad del scan key | La clave privada de escaneo es equivalente al nsec. Una clave de escaneo comprometida significa vigilancia de por vida de todos los outputs SP entrantes. |
+| El escaneo requiere software local | Nostru necesita un proceso Python local para el escaneo ECDH. |
+| Dependencia del servidor de indice | El escaneo requiere datos de tweak por bloque de un servidor de indice. |
+| Seguimiento del birthday height | Sin registrar la altura inicial puede ser necesario escanear desde mucho antes. |
+
+La tension central, como Tim Bouma la describio: un protocolo que elimina la friccion para los remitentes simultaneamente elimina la agencia de los receptores.
+
+---
+
 ## Por que una extension y no un sitio web
 
 El escaneo de Silent Payment requiere acceso a una clave privada de escaneo equivalente a tu clave privada Nostr. Un sitio web - incluso uno servido sobre HTTPS o desde localhost - no puede manejar esto de forma segura. Una extension de navegador si puede.
@@ -113,6 +144,12 @@ La innovacion clave es el protocolo NSP (Nostr Silent Payments):
 5. **Barrido completo sin firma de terceros.** El host local construye y firma la transaccion de barrido BIP-341 P2TR completamente en Python usando cero dependencias externas. La extension recibe la transaccion sin procesar y te permite transmitirla o copiarla para envio manual.
 
 La combinacion - descubrimiento social via Nostr + pagos entrantes silenciosos + firma solo local - nunca habia existido en una sola extension de navegador.
+
+---
+
+## Creditos
+
+La idea de mapear identidades Nostr a direcciones Bitcoin Silent Payment fue articulada por **Tim Bouma** (GitHub: trbouma, Nostr: @trbouma). Su nota sobre culpabilidad del receptor y trampa del donante en NSP (https://gist.github.com/trbouma/77648ebe1005b181b67d1c4b42c7f31d) es el fundamento intelectual de este proyecto: identifico tanto el poder del mapeo (cada npub ya es un receptor Bitcoin) como su tension sin resolver (consentimiento, culpabilidad, trampa). Nostru es una implementacion de esa idea con una arquitectura de mensajeria nativa local que elimina el problema de exposicion del scan key.
 
 ---
 
@@ -200,6 +237,66 @@ Luego puedes:
 Tu direccion Silent Payment es visible en tu propia tarjeta de perfil en la extension. Tambien puedes calcular la direccion sp1 de cualquier otro usuario a partir de su npub - aparece automaticamente en la vista de su perfil.
 
 Comparte tu direccion sp1 igual que compartirias cualquier direccion Bitcoin. Los remitentes usan una billetera compatible con BIP-352 estandar; no necesitan saber nada sobre Nostr.
+
+---
+
+## Prueba con una cuenta desechable
+
+La forma mas segura de verificar el flujo completo (derivar, recibir, escanear, barrer) sin arriesgar fondos reales ni vincular con tu identidad principal.
+
+### Lo que necesitas
+
+- Nostru instalado y el host nativo configurado (ver Paso 1 arriba)
+- Una billetera compatible con BIP-352 para enviar (Cake Wallet en movil o silentpayments.xyz/send)
+- Una pequena cantidad de Bitcoin mainnet (1000-5000 sat; por encima del limite de polvo)
+
+Testnet no se recomienda - el indice NSP de silentpayments.xyz solo indexa mainnet.
+
+### Paso a paso
+
+**1. Generar un par de claves Nostr desechable**
+
+```bash
+npx nostr-tools@latest genkey
+```
+
+Anota la altura de bloque actual - este es tu birthday height.
+
+**2. Cargar el par de claves en Nostru**
+
+Abre la extension, haz clic en "Agregar cuenta", pega el nsec. NO publiques notas desde esta cuenta.
+
+**3. Obtener la direccion SP**
+
+En la pantalla de Wallet o tu propia tarjeta de perfil, la direccion `sp1...` aparece automaticamente.
+
+**4. Enviar a la direccion SP**
+
+Desde una billetera compatible con BIP-352, envia a la direccion `sp1...`. Anota:
+- El ID de transaccion (txid)
+- La altura de bloque en que se confirmo
+
+**5. Escanear**
+
+En la pantalla de Wallet, configura:
+- **Servidor de indice SP**: `https://silentpayments.xyz/api` (por defecto)
+- **Birthday height**: la altura del bloque del paso 1 (o el bloque de confirmacion del paso 4)
+- Dejar el tip height en blanco
+
+Haz clic en **Escanear pagos**. Si el pago confirmo, el UTXO correspondiente aparece.
+
+**6. Barrer**
+
+Introduce una direccion de destino y una tasa de comision, luego haz clic en **Construir transaccion de barrido**. Copia o transmite la transaccion.
+
+### Que demuestra una prueba exitosa
+
+| Verificacion | Lo que valida |
+|-------------|--------------|
+| Direccion sp1 derivada del npub desechable | Matematica de deriveScanPriv / deriveSpendPub correcta |
+| Remitente usa billetera BIP-352 estandar | Las direcciones sp1 de Nostru son compatibles con el ecosistema |
+| El escaneo encuentra el UTXO | ECDH del host nativo, consulta al servidor de indice y derivacion de claves funcionan de extremo a extremo |
+| El barrido se confirma | La firma BIP-341 P2TR y la firma Schnorr son correctas |
 
 ---
 

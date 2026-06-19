@@ -64,6 +64,37 @@ Nostru face asta vizibil: deschide orice profil in extensie si adresa `sp1...` a
 
 ---
 
+## Avantaje si dezavantaje
+
+NSP este puternic dar nu neutru. Acestea sunt avantajele si dezavantajele oneste.
+
+**Avantaje**
+
+| Ce castigi | De ce conteaza |
+|-----------|---------------|
+| Zero configurare pentru receptor | Adresa SP exista in momentul in care exista perechea de chei. Receptorul nu trebuie sa fie online, sa ruleze software sau sa cunoasca NSP. |
+| Acoperire universala | Fiecare utilizator Nostr este deja un receptor Bitcoin. Nu necesita inregistrare. |
+| Decorelabilitate on-chain | Platile multiple catre acelasi npub produc iesiri P2TR fara corelatie. Analiza lantului nu le poate grupa. |
+| Fara reutilizare de adrese | Fiecare plata produce o iesire unica via ECDH. |
+| Graful social ca director de plati | Urmaresti pe cineva pe Nostr, il platesti silentios - fara schimb de adrese. |
+| Fara custode, fara canal | Spre deosebire de Lightning, fara lichiditate de canal sau nod online necesar. |
+
+**Dezavantaje**
+
+| Ce cedezi | De ce conteaza |
+|----------|---------------|
+| Consimtamantul receptorului | Poti primi Bitcoin de la oricine - inclusiv adrese sanctionate sau fonduri ilegale - fara sa stii. In unele jurisdictii aceasta creeaza expunere legala. Tim Bouma a numit asta **culpabilitatea receptorului** (receiver culpability). |
+| Negabilitatea expeditorului | Daca receptorul isi dezvaluie identitatea reala (ex. este doxxat), plata expeditorului ramane permanent legata de acea persoana. Tim Bouma a numit asta **capcana donatorului** (donor entrapment). |
+| Fara opt-out fara rotarea cheilor | Maparea npub-la-adresa-SP este permanenta. Pentru a nu mai primi trebuie rotit npub-ul, ceea ce distruge graful social. |
+| Sensibilitatea cheii de scanare | Cheia privata de scanare este echivalenta cu nsec. O cheie compromisa inseamna monitorizare pe viata a tuturor iesirilor SP primite. |
+| Scanarea necesita software local | Nostru are nevoie de un proces Python local pentru scanarea ECDH. |
+| Dependenta de serverul de index | Scanarea necesita date tweak per bloc de la un server de index. |
+| Urmarirea birthday height | Fara inregistrarea inaltimii initiale poate fi necesara scanarea de la o inaltime mult anterioara. |
+
+Tensiunea centrala, asa cum a descris-o Tim Bouma: un protocol care elimina frecarea pentru expeditori elimina simultan autonomia receptorilor.
+
+---
+
 ## De ce o extensie si nu un site web
 
 Scanarea Silent Payment necesita acces la o cheie privata de scanare care este echivalenta ca importanta cu cheia privata Nostr. Un site web - chiar si unul servit prin HTTPS sau din localhost - nu poate gestiona asta in siguranta. O extensie de browser poate.
@@ -113,6 +144,12 @@ Inovatia cheie este protocolul NSP (Nostr Silent Payments):
 5. **Sweep complet fara semnatura terta.** Host-ul local construieste si semneaza tranzactia de sweep BIP-341 P2TR complet in Python folosind zero dependente externe. Extensia primeste tranzactia bruta si iti permite sa o transmiti sau sa o copiezi pentru trimitere manuala.
 
 Combinatia - descoperire sociala via Nostr + plati primite silentioase + semnatura numai locala - nu a existat niciodata intr-o singura extensie de browser.
+
+---
+
+## Credite
+
+Ideea de a mapa identitati Nostr la adrese Bitcoin Silent Payment a fost articulata de **Tim Bouma** (GitHub: trbouma, Nostr: @trbouma). Nota sa despre culpabilitatea receptorului si capcana donatorului in NSP (https://gist.github.com/trbouma/77648ebe1005b181b67d1c4b42c7f31d) este fundamentul intelectual al acestui proiect: a identificat atat puterea maparii (fiecare npub este deja un receptor Bitcoin) cat si tensiunea sa nerezolvata (consimtamant, culpabilitate, capcana). Nostru este o implementare a acelei idei cu o arhitectura de mesagerie nativa locala care rezolva problema expunerii cheii de scanare.
 
 ---
 
@@ -200,6 +237,66 @@ Dupa aceea poti:
 Adresa ta Silent Payment este vizibila pe propria ta fisa de profil din extensie. Poti calcula si adresa sp1 a oricui altcuiva din npub-ul lor - apare automat in vizualizarea profilului sau.
 
 Impartaseste-ti adresa sp1 la fel cum ai impartasi orice adresa Bitcoin. Expeditorii folosesc un portofel standard compatibil BIP-352; nu au nevoie sa stie nimic despre Nostr.
+
+---
+
+## Testare cu un cont burner
+
+Cea mai sigura modalitate de a verifica intregul flux (derivare, primire, scanare, sweep) fara a risca fonduri reale sau a lega identitatea principala.
+
+### Ce ai nevoie
+
+- Nostru instalat si host-ul nativ configurat (vezi Pasul 1 de mai sus)
+- Un portofel compatibil BIP-352 pentru trimitere (Cake Wallet pe mobil sau silentpayments.xyz/send)
+- O mica cantitate de Bitcoin mainnet (1000-5000 sat; peste limita de dust)
+
+Testnet nu este recomandat - indexul NSP de la silentpayments.xyz indexeaza numai mainnet.
+
+### Pas cu pas
+
+**1. Genereaza o pereche de chei Nostr burner**
+
+```bash
+npx nostr-tools@latest genkey
+```
+
+Noteaza inaltimea curenta a blocului - aceasta este birthday height-ul tau.
+
+**2. Incarca perechea de chei in Nostru**
+
+Deschide extensia, apasa "Adauga cont", lipeste nsec-ul. NU publica note din acest cont.
+
+**3. Obtine adresa SP**
+
+In ecranul Wallet sau pe propria fisa de profil, adresa `sp1...` apare automat.
+
+**4. Trimite la adresa SP**
+
+Dintr-un portofel compatibil BIP-352, trimite la adresa `sp1...`. Noteaza:
+- ID-ul tranzactiei (txid)
+- Inaltimea blocului in care a fost confirmata
+
+**5. Scaneaza**
+
+In ecranul Wallet, seteaza:
+- **Server de index SP**: `https://silentpayments.xyz/api` (implicit)
+- **Birthday height**: inaltimea blocului din pasul 1 (sau blocul de confirmare din pasul 4)
+- Lasa tip height gol
+
+Apasa **Scaneaza plati**. Daca plata a fost confirmata, UTXO-ul corespunzator apare.
+
+**6. Sweep**
+
+Introdu o adresa de destinatie si o rata de comision, apoi apasa **Construieste tranzactie sweep**. Copiaza sau transmite tranzactia.
+
+### Ce dovedeste un test reusit
+
+| Verificare | Ce valideaza |
+|-----------|-------------|
+| Adresa sp1 derivata din npub burner | Matematica deriveScanPriv / deriveSpendPub corecta |
+| Expeditorul foloseste portofel BIP-352 standard | Adresele sp1 Nostru sunt compatibile cu ecosistemul |
+| Scanarea gaseste UTXO-ul | ECDH al host-ului nativ, interogarea serverului de index si derivarea cheilor functioneaza end-to-end |
+| Sweep-ul se confirma | Semnatura BIP-341 P2TR si semnatura Schnorr sunt corecte |
 
 ---
 

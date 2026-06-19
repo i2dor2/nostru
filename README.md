@@ -64,6 +64,37 @@ Nostru makes this visible: open any profile in the extension and the `sp1...` ad
 
 ---
 
+## Trade-offs
+
+NSP is powerful but not neutral. These are the honest pros and cons.
+
+**Pros**
+
+| What you gain | Why it matters |
+|---------------|---------------|
+| Zero receiver setup | The SP address exists the moment the keypair exists. The receiver does not need to be online, running any software, or even aware of NSP. |
+| Universal reach | Every Nostr user is already a Bitcoin receiver. No opt-in required. |
+| On-chain unlinkability | Multiple payments to the same npub produce unrelated P2TR outputs. Chain analysis cannot cluster them. |
+| No address reuse | Each payment produces a unique output derived via ECDH. Same recipient, different senders - outputs are indistinguishable. |
+| Social graph as payment directory | Follow someone on Nostr, pay them silently - no address exchange needed. |
+| No custodian, no channel | Unlike Lightning, no channel liquidity or online node required to receive. |
+
+**Cons**
+
+| What you give up | Why it matters |
+|-----------------|---------------|
+| Receiver consent | You can receive Bitcoin from anyone - including sanctioned addresses or illicit funds - without knowing. In some jurisdictions this creates legal exposure even if unintentional. Tim Bouma called this **receiver culpability**. |
+| Sender deniability | If the receiver later reveals their real identity (e.g., is doxxed), the sender's payment is permanently tied to that person. The payment was private at sending time, but identity revelation retroactively links it. Tim Bouma called this **donor entrapment**. |
+| No opt-out without key rotation | The npub-to-SP-address mapping is permanent. To stop being a receiver, you must rotate your npub - which breaks your social graph. |
+| Scan key sensitivity | The scan private key is root-equivalent to your nsec. A compromised scan key means lifetime monitoring of all your incoming Silent Payment outputs. |
+| Scanning requires local software | Nostru needs a local Python process (`host.py`) for ECDH scanning. A pure browser implementation is not possible without sending the scan key to a server. |
+| Index server dependency | Scanning requires per-block tweak data from an index server. The default server sees your IP and scan range. A self-hosted alternative removes this. |
+| Birthday height tracking | If you do not record the block height when you first used NSP, you may need to scan from a much earlier height - which takes longer and reveals more history to the index server. |
+
+The core tension, as Tim Bouma described it, is that a protocol which removes friction for senders simultaneously removes agency from receivers.
+
+---
+
 ## Why an extension and not a website
 
 Silent Payment scanning requires access to a scan private key that is root-equivalent to your Nostr private key. A website - even one served over HTTPS or from localhost - cannot handle this safely. A browser extension can.
@@ -113,6 +144,12 @@ The key innovation is the NSP (Nostr Silent Payments) protocol:
 5. **Full sweep without third-party signing.** The local host builds and signs the BIP-341 P2TR sweep transaction entirely in Python using zero external dependencies. The extension receives the raw transaction and lets you broadcast it or copy it for manual submission.
 
 The combination - social discovery via Nostr + silent incoming payments + local-only signing - has never existed in a single browser extension before.
+
+---
+
+## Credit
+
+The idea of mapping Nostr identities to Bitcoin Silent Payment addresses was articulated by **Tim Bouma** (GitHub: trbouma, Nostr: @trbouma). His note on receiver culpability and donor entrapment in NSP (https://gist.github.com/trbouma/77648ebe1005b181b67d1c4b42c7f31d) is the intellectual foundation of this project: it identified both the power of the mapping (every npub is already a Bitcoin receiver) and its unresolved tension (consent, culpability, entrapment). Nostru is an implementation of that idea, with a local native messaging architecture that removes the scan key exposure problem.
 
 ---
 
@@ -200,6 +237,73 @@ You then either:
 Your Silent Payment address is visible on your own profile card in the extension. You can also compute anyone else's sp1 address from their npub - it appears automatically on their profile view.
 
 Share your sp1 address the same way you share any Bitcoin address. Senders use a standard BIP-352-compatible wallet; they do not need to know about Nostr at all.
+
+---
+
+## Testing with a burner account
+
+The safest way to verify the full flow (derive, receive, scan, sweep) without risking real funds or linking it to your main identity.
+
+### What you need
+
+- Nostru installed and the native host set up (see Step 1 above)
+- A BIP-352-compatible sender wallet (Cake Wallet on mobile, or silentpayments.xyz/send for a web-based test)
+- A small amount of mainnet Bitcoin to send (1000-5000 sat is enough; stay above the dust limit)
+
+Testnet is not recommended - the NSP index at silentpayments.xyz indexes mainnet only. If you run your own index you can use signet.
+
+### Step-by-step
+
+**1. Generate a burner Nostr keypair**
+
+```bash
+# requires nostr-tools
+npx nostr-tools@latest genkey
+```
+
+This prints an `nsec1...` and its corresponding `npub1...`. Write down the block height right now - this is your birthday height.
+
+**2. Load the burner keypair in Nostru**
+
+Open the extension, click "Add account", paste the `nsec`. Do NOT post anything from this account. The goal is a clean slate.
+
+**3. Get the SP address**
+
+Open the Wallet screen or your own profile card. The `sp1...` address appears automatically, computed from the burner npub.
+
+**4. Send to the SP address**
+
+From a BIP-352-compatible wallet, send to the `sp1...` address. Record:
+- The sending transaction ID (txid)
+- The block height it confirmed in
+
+**5. Scan**
+
+In the Wallet screen, set:
+- **SP index server**: `https://silentpayments.xyz/api` (default)
+- **Birthday height**: the block height from step 1 (or the confirmation block from step 4)
+- Leave tip height blank
+
+Click **Scan for payments**. The local host performs ECDH against every transaction in the range. If the payment confirmed, the matching UTXO appears.
+
+**6. Sweep**
+
+Enter any destination address (your main wallet, a fresh address, a faucet return address) and a fee rate, then click **Build sweep transaction**. Copy or broadcast the raw transaction.
+
+### What a successful test proves
+
+| Check | What it validates |
+|-------|------------------|
+| sp1 address derived from burner npub | deriveScanPriv / deriveSpendPub math is correct |
+| Sender uses standard BIP-352 wallet | Nostru sp1 addresses are compatible with the broader ecosystem |
+| Scan finds the UTXO | Native host ECDH, index server query, and key derivation all work end to end |
+| Sweep broadcasts and confirms | BIP-341 P2TR signing and Schnorr signature are correct |
+
+### Notes
+
+- The burner keypair can be discarded after the test. Do not reuse it.
+- If scan finds nothing, verify the birthday height is at or before the confirmation block, and that the native host is running (`python3 install.py --verify`).
+- The index server sees your IP and scan range but not your private key or which UTXO is yours.
 
 ---
 

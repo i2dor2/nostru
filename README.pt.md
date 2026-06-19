@@ -64,6 +64,37 @@ O Nostru torna isso visivel: abra qualquer perfil na extensao e o endereco `sp1.
 
 ---
 
+## Vantagens e desvantagens
+
+NSP e poderoso mas nao neutro. Estas sao as vantagens e desvantagens honestas.
+
+**Vantagens**
+
+| O que voce ganha | Por que importa |
+|-----------------|----------------|
+| Zero configuracao para o receptor | O endereco SP existe no momento em que o par de chaves existe. O receptor nao precisa estar online, executar software ou conhecer NSP. |
+| Alcance universal | Cada usuario Nostr ja e um receptor de Bitcoin. Nao requer inscricao. |
+| Desvinculabilidade on-chain | Multiplos pagamentos ao mesmo npub produzem outputs P2TR sem correlacao. A analise em cadeia nao pode agrupа-los. |
+| Sem reutilizacao de endereco | Cada pagamento produz um output unico via ECDH. |
+| Grafo social como diretorio de pagamentos | Siga alguem no Nostr, pague silenciosamente - sem troca de enderecos. |
+| Sem custodiante, sem canal | Ao contrario do Lightning, sem necessidade de liquidez de canal ou no online. |
+
+**Desvantagens**
+
+| O que voce perde | Por que importa |
+|-----------------|----------------|
+| Consentimento do receptor | Voce pode receber Bitcoin de qualquer pessoa - incluindo enderecos sancionados ou fundos ilegais - sem saber. Em algumas jurisdicoes isso cria exposicao legal. Tim Bouma chamou isso de **culpabilidade do receptor** (receiver culpability). |
+| Negabilidade do remetente | Se o receptor revelar sua identidade real (por ex., for doxxado), o pagamento do remetente fica permanentemente vinculado a essa pessoa. Tim Bouma chamou isso de **armadilha do doador** (donor entrapment). |
+| Sem opt-out sem rotacao de chaves | O mapeamento npub-para-SP e permanente. Para parar de receber e necessario rotacionar o npub, o que quebra o grafo social. |
+| Sensibilidade do scan key | A chave privada de varredura e equivalente ao nsec. Uma chave comprometida significa monitoramento vitalicio dos outputs SP recebidos. |
+| Varredura requer software local | Nostru precisa de um processo Python local para a varredura ECDH. |
+| Dependencia do servidor de indice | A varredura requer dados de tweak por bloco de um servidor de indice. |
+| Rastreamento da birthday height | Sem registrar a altura inicial pode ser necessario varrer desde muito antes. |
+
+A tensao central, como Tim Bouma descreveu: um protocolo que remove o atrito para os remetentes simultaneamente remove a autonomia dos receptores.
+
+---
+
 ## Por que uma extensao e nao um site
 
 A varredura de Silent Payment requer acesso a uma chave privada de varredura equivalente a sua chave privada Nostr. Um site - mesmo servido via HTTPS ou de localhost - nao pode lidar com isso com seguranca. Uma extensao de navegador pode.
@@ -113,6 +144,12 @@ A inovacao-chave e o protocolo NSP (Nostr Silent Payments):
 5. **Sweep completo sem assinatura de terceiros.** O host local constroi e assina a transacao de sweep BIP-341 P2TR completamente em Python usando zero dependencias externas. A extensao recebe a transacao bruta e permite que voce a transmita ou copie para envio manual.
 
 A combinacao - descoberta social via Nostr + pagamentos recebidos silenciosos + assinatura apenas local - nunca existiu em uma unica extensao de navegador.
+
+---
+
+## Creditos
+
+A ideia de mapear identidades Nostr para enderecos Bitcoin Silent Payment foi articulada por **Tim Bouma** (GitHub: trbouma, Nostr: @trbouma). Sua nota sobre culpabilidade do receptor e armadilha do doador no NSP (https://gist.github.com/trbouma/77648ebe1005b181b67d1c4b42c7f31d) e o fundamento intelectual deste projeto: identificou tanto o poder do mapeamento (todo npub ja e um receptor Bitcoin) quanto sua tensao nao resolvida (consentimento, culpabilidade, armadilha). O Nostru e uma implementacao dessa ideia com uma arquitetura de mensagens nativas local que resolve o problema de exposicao do scan key.
 
 ---
 
@@ -200,6 +237,66 @@ Voce entao pode:
 Seu endereco Silent Payment e visivel no seu proprio cartao de perfil na extensao. Voce tambem pode calcular o endereco sp1 de qualquer outro usuario a partir do npub dele - aparece automaticamente na visualizacao do perfil.
 
 Compartilhe seu endereco sp1 da mesma forma que compartilharia qualquer endereco Bitcoin. Os remetentes usam uma carteira padrao compativel com BIP-352; nao precisam saber nada sobre Nostr.
+
+---
+
+## Testando com uma conta descartavel
+
+A forma mais segura de verificar o fluxo completo (derivar, receber, varrer, sweep) sem arriscar fundos reais ou vincular a identidade principal.
+
+### O que voce precisa
+
+- Nostru instalado e o host nativo configurado (ver Passo 1 acima)
+- Uma carteira compativel com BIP-352 para enviar (Cake Wallet no celular ou silentpayments.xyz/send)
+- Uma pequena quantidade de Bitcoin mainnet (1000-5000 sat; acima do limite de dust)
+
+Testnet nao e recomendado - o indice NSP do silentpayments.xyz indexa apenas mainnet.
+
+### Passo a passo
+
+**1. Gerar um par de chaves Nostr descartavel**
+
+```bash
+npx nostr-tools@latest genkey
+```
+
+Anote a altura de bloco atual - este e seu birthday height.
+
+**2. Carregar o par de chaves no Nostru**
+
+Abra a extensao, clique em "Adicionar conta", cole o nsec. NAO publique notas desta conta.
+
+**3. Obter o endereco SP**
+
+Na tela de Wallet ou no seu proprio cartao de perfil, o endereco `sp1...` aparece automaticamente.
+
+**4. Enviar para o endereco SP**
+
+De uma carteira compativel com BIP-352, envie para o endereco `sp1...`. Anote:
+- O ID da transacao (txid)
+- A altura de bloco em que foi confirmada
+
+**5. Varrer**
+
+Na tela de Wallet, configure:
+- **Servidor de indice SP**: `https://silentpayments.xyz/api` (padrao)
+- **Birthday height**: a altura de bloco do passo 1 (ou o bloco de confirmacao do passo 4)
+- Deixar o tip height em branco
+
+Clique em **Varrer pagamentos**. Se o pagamento foi confirmado, o UTXO correspondente aparece.
+
+**6. Sweep**
+
+Insira um endereco de destino e uma taxa de comissao, depois clique em **Construir transacao de sweep**. Copie ou transmita a transacao.
+
+### O que uma teste bem-sucedida prova
+
+| Verificacao | O que valida |
+|------------|-------------|
+| Endereco sp1 derivado do npub descartavel | Matematica de deriveScanPriv / deriveSpendPub correta |
+| Remetente usa carteira BIP-352 padrao | Enderecos sp1 do Nostru sao compativeis com o ecossistema |
+| Varredura encontra o UTXO | ECDH do host nativo, consulta ao servidor de indice e derivacao de chaves funcionam de ponta a ponta |
+| Sweep e confirmado | Assinatura BIP-341 P2TR e Schnorr estao corretas |
 
 ---
 

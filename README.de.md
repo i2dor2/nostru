@@ -64,6 +64,37 @@ Nostru macht das sichtbar: Oeffne ein beliebiges Profil in der Erweiterung, und 
 
 ---
 
+## Abwaegungen
+
+NSP ist maechtig, aber nicht neutral. Dies sind die ehrlichen Vor- und Nachteile.
+
+**Vorteile**
+
+| Was du gewinnst | Warum es wichtig ist |
+|----------------|---------------------|
+| Null Einrichtungsaufwand fuer Empfaenger | Die SP-Adresse existiert in dem Moment, in dem das Schluesselpaar existiert. Der Empfaenger muss nicht online sein, keine Software ausfuehren oder NSP kennen. |
+| Universelle Reichweite | Jeder Nostr-Benutzer ist bereits ein Bitcoin-Empfaenger. Keine Anmeldung erforderlich. |
+| On-Chain-Unkorrelierbarkeit | Mehrere Zahlungen an denselben npub erzeugen unkorrelierbare P2TR-Outputs. Chain-Analyse kann sie nicht bündeln. |
+| Keine Adresswiederverwendung | Jede Zahlung erzeugt einen einzigartigen Output via ECDH. |
+| Soziales Graph als Zahlungsverzeichnis | Folge jemandem auf Nostr, bezahle ihn lautlos - kein Adressaustausch noetig. |
+| Kein Verwahrer, kein Kanal | Im Gegensatz zu Lightning keine Kanallikuiditaet oder Online-Node erforderlich. |
+
+**Nachteile**
+
+| Was du aufgibst | Warum es wichtig ist |
+|----------------|---------------------|
+| Zustimmung des Empfaengers | Du kannst Bitcoin von jedem empfangen - einschliesslich sanktionierten Adressen oder illegalen Mitteln - ohne es zu wissen. In manchen Laendern fuehrt dies zu rechtlicher Exposition, auch wenn es unbeabsichtigt ist. Tim Bouma nannte dies **Empfaenger-Schuld** (receiver culpability). |
+| Absender-Deniabilitaet | Wenn der Empfaenger spaeter seine wahre Identitaet preisgibt (z.B. geoxxed wird), ist die Zahlung des Absenders dauerhaft mit dieser Person verknuepft. Tim Bouma nannte dies **Spender-Falle** (donor entrapment). |
+| Kein Opt-out ohne Schluessel-Rotation | Das npub-zu-SP-Adress-Mapping ist permanent. Um den Empfang zu stoppen, muss der npub rotiert werden, was den sozialen Graphen zerstoert. |
+| Scan-Schluessel-Sensibilitaet | Der Scan-Private-Key ist nsec-aequivalent. Ein kompromittierter Scan-Key bedeutet lebenslange Ueberwachung aller eingehenden SP-Outputs. |
+| Scanning erfordert lokale Software | Nostru benoetigt einen lokalen Python-Prozess fuer ECDH-Scanning. |
+| Indexserver-Abhaengigkeit | Das Scannen benoetigt per-Block-Tweak-Daten von einem Indexserver. Der Standard-Server sieht IP und Scanbereich. |
+| Birthday-Height-Tracking | Ohne Aufzeichnung der Starthoehe muss ab einer frueheren Hoehe gescannt werden. |
+
+Die Kernspannung, wie Tim Bouma es beschrieb: Ein Protokoll, das die Reibung fuer Absender beseitigt, entzieht gleichzeitig den Empfaengern die Handlungsfreiheit.
+
+---
+
 ## Warum eine Erweiterung und keine Website
 
 Silent-Payment-Scanning erfordert Zugriff auf einen Scan-privaten-Schluessel, der dem privaten Nostr-Schluessel aequivalent ist. Eine Website - auch eine, die ueber HTTPS oder von localhost bereitgestellt wird - kann damit nicht sicher umgehen. Eine Browser-Erweiterung kann es.
@@ -113,6 +144,12 @@ Die Schluesselinnovation ist das NSP-Protokoll (Nostr Silent Payments):
 5. **Vollstaendiger Sweep ohne Drittanbieter-Signierung.** Der lokale Host erstellt und signiert die BIP-341-P2TR-Sweep-Transaktion vollstaendig in Python mit null externen Abhaengigkeiten. Die Erweiterung empfaengt die Rohtransaktion und laesst dich sie uebertragen oder fuer manuelle Einreichung kopieren.
 
 Die Kombination - soziale Entdeckung via Nostr + lautloser eingehender Zahlungsempfang + ausschliesslich lokales Signieren - hat es noch nie in einer einzigen Browser-Erweiterung gegeben.
+
+---
+
+## Anerkennung
+
+Die Idee, Nostr-Identitaeten auf Bitcoin-Silent-Payment-Adressen abzubilden, wurde von **Tim Bouma** (GitHub: trbouma, Nostr: @trbouma) formuliert. Seine Notiz ueber Empfaenger-Schuld und Spender-Falle im NSP-Kontext (https://gist.github.com/trbouma/77648ebe1005b181b67d1c4b42c7f31d) ist das intellektuelle Fundament dieses Projekts: Sie identifizierte sowohl die Staerke des Mappings (jeder npub ist bereits ein Bitcoin-Empfaenger) als auch seine ungeloeste Spannung (Zustimmung, Schuld, Falle). Nostru ist eine Implementierung dieser Idee mit einer lokalen Native-Messaging-Architektur, die das Scan-Key-Expositionsproblem loest.
 
 ---
 
@@ -200,6 +237,66 @@ Danach kannst du:
 Deine Silent-Payment-Adresse ist auf deiner eigenen Profilkarte in der Erweiterung sichtbar. Du kannst auch die sp1-Adresse eines anderen Nutzers aus seinem npub berechnen - sie erscheint automatisch in der Profilansicht.
 
 Teile deine sp1-Adresse genauso, wie du jede Bitcoin-Adresse teilen wuerdest. Sender verwenden eine standard-BIP-352-kompatible Wallet; sie muessen nichts ueber Nostr wissen.
+
+---
+
+## Testen mit einem Wegwerf-Konto
+
+Der sicherste Weg, den gesamten Ablauf (ableiten, empfangen, scannen, sweepen) ohne echte Mittel oder Verknuepfung mit der Hauptidentitaet zu verifizieren.
+
+### Was du brauchst
+
+- Nostru installiert und den nativen Host eingerichtet (siehe Schritt 1 oben)
+- Eine BIP-352-kompatible Sender-Wallet (Cake Wallet auf Mobilgeraet oder silentpayments.xyz/send fuer einen webbasierten Test)
+- Eine kleine Menge Mainnet-Bitcoin (1000-5000 Sat reichen; ueber dem Dust-Limit bleiben)
+
+Testnet wird nicht empfohlen - der NSP-Index von silentpayments.xyz indiziert nur Mainnet.
+
+### Schritt fuer Schritt
+
+**1. Wegwerf-Nostr-Schluesselpaar generieren**
+
+```bash
+npx nostr-tools@latest genkey
+```
+
+Notiere dir den aktuellen Blockhoehe - das ist deine Birthday-Height.
+
+**2. Wegwerf-Schluesselpaar in Nostru laden**
+
+Erweiterung oeffnen, "Konto hinzufuegen" klicken, nsec einfuegen. KEINE Notizen von diesem Konto veroeffentlichen.
+
+**3. SP-Adresse ermitteln**
+
+Im Wallet-Bildschirm oder der eigenen Profilkarte erscheint die `sp1...`-Adresse automatisch.
+
+**4. An die SP-Adresse senden**
+
+Von einer BIP-352-kompatiblen Wallet an die `sp1...`-Adresse senden. Notiere:
+- Die Transaktions-ID (txid)
+- Die Blockhoehe, in der sie bestaetigt wurde
+
+**5. Scannen**
+
+Im Wallet-Bildschirm einstellen:
+- **SP-Indexserver**: `https://silentpayments.xyz/api` (Standard)
+- **Birthday-Height**: die Blockhoehe aus Schritt 1 (oder der Bestaeitigungsblock aus Schritt 4)
+- Tip-Height leer lassen
+
+**Auf Zahlungen scannen** klicken. Wenn die Zahlung bestaetigt wurde, erscheint der passende UTXO.
+
+**6. Sweep**
+
+Zieladresse und Gebuehrenrate eingeben, dann **Sweep-Transaktion erstellen** klicken. Rohtransaktion kopieren oder senden.
+
+### Was ein erfolgreicher Test beweist
+
+| Pruefung | Was validiert wird |
+|----------|-------------------|
+| sp1-Adresse aus Wegwerf-npub abgeleitet | deriveScanPriv / deriveSpendPub Mathematik korrekt |
+| Absender verwendet Standard-BIP-352-Wallet | Nostru sp1-Adressen sind mit dem oekosystem kompatibel |
+| Scan findet UTXO | Nativer Host ECDH, Indexserver-Abfrage und Schluesselderiavtion funktionieren End-to-End |
+| Sweep wird bestaetigt | BIP-341 P2TR-Signierung und Schnorr-Signatur sind korrekt |
 
 ---
 
