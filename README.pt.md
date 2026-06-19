@@ -211,15 +211,15 @@ Faca login com seu nsec. A chave privada vive apenas no armazenamento de sessao 
 
 ### Passo 3 - Varrer por pagamentos
 
-Abra a tela de Carteira, expanda "Silent Payments (NSP)", e preencha:
+Abra a tela de Carteira, expanda "Silent Payments (NSP)", defina **Altura de nascimento** e escolha um backend:
 
-| Campo | O que inserir |
-|-------|---------------|
-| Servidor de indice SP | URL de um indice BIP-352 (padrao: silentpayments.xyz/api) |
-| Altura de nascimento | A altura de bloco a partir da qual comecar a varredura (use a altura quando voce primeiro compartilhou seu endereco sp1) |
-| Altura ponta | Limite superior opcional; deixe em branco para o padrao do servidor |
+| Backend | Campo | Botao |
+|---------|-------|-------|
+| **Indice SP** (padrao) | Servidor de indice SP + Altura ponta opcional | Varrer por pagamentos |
+| **Esplora** | Endpoint Esplora + Altura ponta (max. 20 blocos) | Varrer via Esplora |
+| **Frigate** | Servidor Frigate (`ssl://host:50002` ou `tcp://host:50001`) | Varrer via Frigate |
 
-Clique em **Varrer por pagamentos**. O host local consulta o servidor de indice para tweaks por bloco e realiza ECDH contra sua chave de varredura para encontrar saidas P2TR correspondentes. Nenhuma informacao de chave privada e enviada ao servidor de indice.
+Em todos os modos, o host local realiza ECDH contra sua chave de varredura. Nenhuma informacao de chave privada sai do seu dispositivo. Veja [Backends de varredura](#backends-de-varredura) para detalhes.
 
 ### Passo 4 - Sweep
 
@@ -282,12 +282,7 @@ De uma carteira compativel com BIP-352, envie para o endereco `sp1...`. Anote:
 
 **5. Varrer**
 
-Na tela de Wallet, configure:
-- **Servidor de indice SP**: `https://silentpayments.xyz/api` (padrao)
-- **Birthday height**: a altura de bloco do passo 1 (ou o bloco de confirmacao do passo 4)
-- Deixar o tip height em branco
-
-Clique em **Varrer pagamentos**. Se o pagamento foi confirmado, o UTXO correspondente aparece.
+Na tela de Wallet, defina **Altura de nascimento** como a altura de bloco do passo 1. Clique em **Varrer por pagamentos** (usa o indice SP padrao). Se o indice nao estiver disponivel, tente **Varrer via Esplora** ou **Varrer via Frigate** — veja [Backends de varredura](#backends-de-varredura).
 
 **6. Sweep**
 
@@ -301,6 +296,38 @@ Insira um endereco de destino e uma taxa de comissao, depois clique em **Constru
 | Remetente usa carteira BIP-352 padrao | Enderecos sp1 do Nostru sao compativeis com o ecossistema |
 | Varredura encontra o UTXO | ECDH do host nativo, consulta ao servidor de indice e derivacao de chaves funcionam de ponta a ponta |
 | Sweep e confirmado | Assinatura BIP-341 P2TR e Schnorr estao corretas |
+
+---
+
+## Backends de varredura
+
+Tres metodos estao disponiveis para detectar Silent Payments recebidos. Em todos os tres, a chave privada de varredura permanece no seu dispositivo.
+
+| Backend | Protocolo | Ideal para |
+|---------|-----------|-----------|
+| **Indice SP** | REST HTTP | Padrao; rapido; requer servidor de indice BIP-352 |
+| **Esplora** | REST HTTP | Sem indice dedicado; baixa blocos brutos localmente; max. 20 blocos por varredura |
+| **Frigate** | TCP / TLS (Electrum JSON-RPC) | Historico completo; grandes intervalos; requer servidor Frigate |
+
+### Indice SP
+
+Padrao: `https://silentpayments.xyz/api`. O servidor retorna dados tweak precomputados `input_hash × A_sum` por bloco; o host local faz o ECDH.
+
+**Privacidade:** o servidor de indice ve seu IP e o intervalo de varredura (nascimento ate ponta), mas nao sua chave de varredura nem seus UTXOs.
+
+### Esplora
+
+Baixa transacoes brutas de uma API Esplora publica ou auto-hospedada (`https://mempool.space` por padrao) e calcula tweaks localmente. Nao requer indice SP dedicado. Limitado a 20 blocos por varredura.
+
+### Frigate
+
+[Frigate](https://github.com/sparrowwallet/frigate) e um servidor Electrum compativel com BIP-352. Transmite chaves tweak `input_hash × A_sum` via Electrum JSON-RPC; o host local realiza ECDH e a correspondencia de saidas P2TR. Sua chave de varredura nunca e enviada ao servidor.
+
+**Formato de conexao:**
+- TLS: `ssl://host:50002`
+- TCP simples: `tcp://host:50001`
+
+Para executar seu proprio servidor Frigate: [github.com/sparrowwallet/frigate](https://github.com/sparrowwallet/frigate).
 
 ---
 

@@ -211,15 +211,15 @@ Inicia sesion con tu nsec. La clave privada vive solo en el almacenamiento de se
 
 ### Paso 3 - Escanear pagos
 
-Abre la pantalla de Billetera, expande "Silent Payments (NSP)", y completa:
+Abre la pantalla de Billetera, expande "Silent Payments (NSP)", establece **Altura de nacimiento** y elige un backend:
 
-| Campo | Que introducir |
-|-------|---------------|
-| Servidor de indice SP | URL de un indice BIP-352 (predeterminado: silentpayments.xyz/api) |
-| Altura de nacimiento | La altura de bloque desde la que empezar a escanear (usa la altura cuando compartiste por primera vez tu direccion sp1) |
-| Altura punta | Limite superior opcional; deja en blanco para el predeterminado del servidor |
+| Backend | Campo | Boton |
+|---------|-------|-------|
+| **Indice SP** (por defecto) | Servidor de indice SP + Altura punta opcional | Escanear pagos |
+| **Esplora** | Endpoint Esplora + Altura punta (max. 20 bloques) | Escanear via Esplora |
+| **Frigate** | Servidor Frigate (`ssl://host:50002` o `tcp://host:50001`) | Escanear via Frigate |
 
-Haz clic en **Escanear pagos**. El host local consulta el servidor de indice para tweaks por bloque y realiza ECDH contra tu clave de escaneo para encontrar outputs P2TR coincidentes. No se envia informacion de clave privada al servidor de indice.
+En todos los modos, el host local realiza ECDH contra tu clave de escaneo. Ningun dato de clave privada sale de tu dispositivo. Ver [Backends de escaneo](#backends-de-escaneo) para mas detalles.
 
 ### Paso 4 - Barrer
 
@@ -282,12 +282,7 @@ Desde una billetera compatible con BIP-352, envia a la direccion `sp1...`. Anota
 
 **5. Escanear**
 
-En la pantalla de Wallet, configura:
-- **Servidor de indice SP**: `https://silentpayments.xyz/api` (por defecto)
-- **Birthday height**: la altura del bloque del paso 1 (o el bloque de confirmacion del paso 4)
-- Dejar el tip height en blanco
-
-Haz clic en **Escanear pagos**. Si el pago confirmo, el UTXO correspondiente aparece.
+En la pantalla de Wallet, establece **Altura de nacimiento** en la altura del bloque del paso 1. Haz clic en **Escanear pagos** (usa el indice SP por defecto). Si el indice no esta disponible, prueba **Escanear via Esplora** o **Escanear via Frigate** — ver [Backends de escaneo](#backends-de-escaneo).
 
 **6. Barrer**
 
@@ -301,6 +296,38 @@ Introduce una direccion de destino y una tasa de comision, luego haz clic en **C
 | Remitente usa billetera BIP-352 estandar | Las direcciones sp1 de Nostru son compatibles con el ecosistema |
 | El escaneo encuentra el UTXO | ECDH del host nativo, consulta al servidor de indice y derivacion de claves funcionan de extremo a extremo |
 | El barrido se confirma | La firma BIP-341 P2TR y la firma Schnorr son correctas |
+
+---
+
+## Backends de escaneo
+
+Hay tres metodos disponibles para detectar Silent Payments entrantes. En los tres, la clave privada de escaneo permanece en tu dispositivo.
+
+| Backend | Protocolo | Ideal para |
+|---------|-----------|-----------|
+| **Indice SP** | REST HTTP | Por defecto; rapido; requiere servidor de indice BIP-352 |
+| **Esplora** | REST HTTP | Sin indice dedicado; descarga bloques en bruto localmente; max. 20 bloques por escaneo |
+| **Frigate** | TCP / TLS (Electrum JSON-RPC) | Historial completo; rangos grandes; requiere servidor Frigate |
+
+### Indice SP
+
+Por defecto: `https://silentpayments.xyz/api`. El servidor devuelve datos tweak precomputados `input_hash × A_sum` por bloque; el host local hace el ECDH.
+
+**Privacidad:** el servidor de indice ve tu IP y el rango de escaneo (nacimiento a punta), pero no tu clave de escaneo ni tus UTXOs.
+
+### Esplora
+
+Descarga transacciones en bruto de una API Esplora publica o autoalojada (`https://mempool.space` por defecto) y calcula tweaks localmente. No requiere indice SP dedicado. Limitado a 20 bloques por escaneo.
+
+### Frigate
+
+[Frigate](https://github.com/sparrowwallet/frigate) es un servidor Electrum compatible con BIP-352. Transmite claves tweak `input_hash × A_sum` por Electrum JSON-RPC; el host local realiza ECDH y la coincidencia de outputs P2TR. Tu clave de escaneo nunca se envia al servidor.
+
+**Formato de conexion:**
+- TLS: `ssl://host:50002`
+- TCP simple: `tcp://host:50001`
+
+Para ejecutar tu propio servidor Frigate: [github.com/sparrowwallet/frigate](https://github.com/sparrowwallet/frigate).
 
 ---
 

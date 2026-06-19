@@ -211,15 +211,15 @@ Melde dich mit deinem nsec an. Der private Schluessel lebt nur im Sitzungsspeich
 
 ### Schritt 3 - Nach Zahlungen scannen
 
-Oeffne den Wallet-Bildschirm, erweitere "Silent Payments (NSP)" und fuell aus:
+Oeffne den Wallet-Bildschirm, erweitere "Silent Payments (NSP)", setze **Geburtshoehe** und waehle ein Backend:
 
-| Feld | Was eingeben |
-|------|--------------|
-| SP-Indexserver | URL eines BIP-352-Index (Standard: silentpayments.xyz/api) |
-| Geburtshoehe | Die Blockhoehe, ab der das Scanning beginnen soll (verwende die Hoehe, bei der du deine sp1-Adresse erstmals geteilt hast) |
-| Spitzenhoehe | Optionale Obergrenze; leer lassen fuer den Serverstandard |
+| Backend | Feld | Schaltflaeche |
+|---------|------|---------------|
+| **SP-Index** (Standard) | SP-Indexserver + opt. Spitzenhoehe | Nach Zahlungen scannen |
+| **Esplora** | Esplora-Endpunkt + Spitzenhoehe (max. 20 Bloecke) | Via Esplora scannen |
+| **Frigate** | Frigate-Server (`ssl://host:50002` oder `tcp://host:50001`) | Via Frigate scannen |
 
-Klicke auf **Nach Zahlungen scannen**. Der lokale Host fragt den Indexserver nach Block-Tweaks ab und fuehrt ECDH gegen deinen Scan-Schluessel durch, um passende P2TR-Outputs zu finden. Es werden keine privaten Schluessel an den Indexserver gesendet.
+In allen Modi fuehrt der lokale Host ECDH gegen deinen Scan-Schluessel durch. Es werden keine privaten Schluessel an externe Server gesendet. Siehe [Scan-Backends](#scan-backends) fuer Details.
 
 ### Schritt 4 - Sweep
 
@@ -282,12 +282,7 @@ Von einer BIP-352-kompatiblen Wallet an die `sp1...`-Adresse senden. Notiere:
 
 **5. Scannen**
 
-Im Wallet-Bildschirm einstellen:
-- **SP-Indexserver**: `https://silentpayments.xyz/api` (Standard)
-- **Birthday-Height**: die Blockhoehe aus Schritt 1 (oder der Bestaeitigungsblock aus Schritt 4)
-- Tip-Height leer lassen
-
-**Auf Zahlungen scannen** klicken. Wenn die Zahlung bestaetigt wurde, erscheint der passende UTXO.
+Im Wallet-Bildschirm **Geburtshoehe** auf die Blockhoehe aus Schritt 1 setzen. Auf **Nach Zahlungen scannen** klicken (verwendet den Standard-SP-Index). Falls der Index nicht verfuegbar ist, **Via Esplora scannen** oder **Via Frigate scannen** versuchen — siehe [Scan-Backends](#scan-backends).
 
 **6. Sweep**
 
@@ -301,6 +296,38 @@ Zieladresse und Gebuehrenrate eingeben, dann **Sweep-Transaktion erstellen** kli
 | Absender verwendet Standard-BIP-352-Wallet | Nostru sp1-Adressen sind mit dem oekosystem kompatibel |
 | Scan findet UTXO | Nativer Host ECDH, Indexserver-Abfrage und Schluesselderiavtion funktionieren End-to-End |
 | Sweep wird bestaetigt | BIP-341 P2TR-Signierung und Schnorr-Signatur sind korrekt |
+
+---
+
+## Scan-Backends
+
+Drei Methoden stehen fuer die Erkennung eingehender Silent Payments zur Verfuegung. In allen drei verbleibt der Scan-Privatschluessel auf deinem Geraet.
+
+| Backend | Protokoll | Am besten fuer |
+|---------|-----------|---------------|
+| **SP-Index** | REST HTTP | Standard; schnell; benoetigt BIP-352-Indexserver |
+| **Esplora** | REST HTTP | Kein Index noetig; laedt Rohbloecke lokal; max. 20 Bloecke pro Scan |
+| **Frigate** | TCP / TLS (Electrum JSON-RPC) | Vollstaendiger Verlauf; grosse Bereiche; benoetigt Frigate-Server |
+
+### SP-Index
+
+Standard: `https://silentpayments.xyz/api`. Der Server liefert vorberechnete `input_hash × A_sum`-Tweak-Daten pro Block; der lokale Host fuehrt ECDH durch.
+
+**Datenschutz:** Der Indexserver sieht deine IP und den Scanbereich (Geburts- bis Spitzenhoehe), aber nicht deinen Scan-Schluessel oder deine UTXOs.
+
+### Esplora
+
+Laedt Rohtransaktionen von einem oeffentlichen oder selbst gehosteten Esplora-API (`https://mempool.space` als Standard) und berechnet Tweaks lokal. Kein dedizierter SP-Index erforderlich. Auf 20 Bloecke pro Scan begrenzt.
+
+### Frigate
+
+[Frigate](https://github.com/sparrowwallet/frigate) ist ein BIP-352-faehiger Electrum-Server. Er streamt `input_hash × A_sum`-Tweaks ueber Electrum JSON-RPC; der lokale Host fuehrt ECDH und P2TR-Output-Matching durch. Dein Scan-Schluessel wird nie an den Server gesendet.
+
+**Verbindungsformat:**
+- TLS: `ssl://host:50002`
+- Einfaches TCP: `tcp://host:50001`
+
+Eigenen Frigate-Server betreiben: [github.com/sparrowwallet/frigate](https://github.com/sparrowwallet/frigate).
 
 ---
 

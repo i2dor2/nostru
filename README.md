@@ -211,15 +211,15 @@ Sign in with your nsec. The private key lives only in session storage and is use
 
 ### Step 3 - Scan for payments
 
-Open the Wallet screen, expand "Silent Payments (NSP)", and fill in:
+Open the Wallet screen, expand "Silent Payments (NSP)", set **Birthday height**, and choose a backend:
 
-| Field | What to enter |
-|-------|--------------|
-| SP index server | URL of a BIP-352 index (default: silentpayments.xyz/api) |
-| Birthday height | The block height from which to start scanning (use the height when you first shared your sp1 address) |
-| Tip height | Optional upper bound; leave blank for the server default |
+| Backend | Field | Button |
+|---------|-------|--------|
+| **SP index** (default) | SP index server + optional Tip height | Scan for payments |
+| **Esplora** | Esplora endpoint + Tip height (max 20 blocks) | Scan via Esplora |
+| **Frigate** | Frigate server (`ssl://host:50002` or `tcp://host:50001`) | Scan via Frigate |
 
-Click **Scan for payments**. The local host queries the index server for per-block tweaks and performs ECDH against your scan key to find matching P2TR outputs. No private key information is sent to the index server.
+In all modes, the local host performs ECDH against your scan key. No private key information leaves your device. See [Scanning backends](#scanning-backends) for details on each method.
 
 ### Step 4 - Sweep
 
@@ -283,12 +283,7 @@ From a BIP-352-compatible wallet, send to the `sp1...` address. Record:
 
 **5. Scan**
 
-In the Wallet screen, set:
-- **SP index server**: `https://silentpayments.xyz/api` (default)
-- **Birthday height**: the block height from step 1 (or the confirmation block from step 4)
-- Leave tip height blank
-
-Click **Scan for payments**. The local host performs ECDH against every transaction in the range. If the payment confirmed, the matching UTXO appears.
+In the Wallet screen, set **Birthday height** to the block height from step 1. Click **Scan for payments** (uses the default SP index). If the index is unavailable, try **Scan via Esplora** or **Scan via Frigate** — see [Scanning backends](#scanning-backends).
 
 **6. Sweep**
 
@@ -306,8 +301,40 @@ Enter any destination address (your main wallet, a fresh address, a faucet retur
 ### Notes
 
 - The burner keypair can be discarded after the test. Do not reuse it.
-- If scan finds nothing, verify the birthday height is at or before the confirmation block, and that the native host is running (`python3 install.py --verify`).
+- If scan finds nothing, verify the birthday height is at or before the confirmation block, and that the native host is running (`python3 install.py --verify`). If the SP index is unavailable, try **Scan via Esplora** or **Scan via Frigate**.
 - The index server sees your IP and scan range but not your private key or which UTXO is yours.
+
+---
+
+## Scanning backends
+
+Three methods are available for detecting incoming Silent Payments. In all three, the scan private key stays on your device.
+
+| Backend | Protocol | Best for |
+|---------|----------|---------|
+| **SP index** | REST HTTP | Default; fast; requires a BIP-352 index server |
+| **Esplora** | REST HTTP | No dedicated index; fetches raw blocks locally; max 20 blocks per run |
+| **Frigate** | TCP / TLS (Electrum JSON-RPC) | Full history; large ranges; requires a Frigate server |
+
+### SP index
+
+The default is `https://silentpayments.xyz/api`. The server returns pre-computed `input_hash × A_sum` tweak data per block; the local host does the ECDH.
+
+**Privacy:** the index server sees your IP and scan range (birthday to tip), but not your scan key or which UTXOs are yours.
+
+### Esplora
+
+Fetches raw transactions from a public or self-hosted Esplora API (`https://mempool.space` by default) and computes tweaks locally. No dedicated SP index required. Limited to 20 blocks per scan to stay within API rate limits.
+
+### Frigate
+
+[Frigate](https://github.com/sparrowwallet/frigate) is a BIP-352-aware Electrum server. It streams `input_hash × A_sum` tweak keys over Electrum JSON-RPC; the local host performs ECDH and P2TR output matching. Your scan key is never sent to the server.
+
+**Connection format:**
+- TLS: `ssl://host:50002`
+- Plain TCP: `tcp://host:50001`
+
+To run your own Frigate server, see [github.com/sparrowwallet/frigate](https://github.com/sparrowwallet/frigate).
 
 ---
 

@@ -211,15 +211,15 @@ Autentifica-te cu nsec-ul tau. Cheia privata traieste doar in stocarea de sesiun
 
 ### Pasul 3 - Scanarea pentru plati
 
-Deschide ecranul Portofel, extinde "Silent Payments (NSP)" si completeaza:
+Deschide ecranul Portofel, extinde "Silent Payments (NSP)", seteaza **Birthday height** si alege o metoda de scanare:
 
-| Camp | Ce sa introduci |
-|------|-----------------|
-| Server index SP | URL-ul unui index BIP-352 (implicit: silentpayments.xyz/api) |
-| Inaltime de nastere | Inaltimea blocului de la care sa inceapa scanarea (foloseste inaltimea cand ai impartasit prima data adresa ta sp1) |
-| Inaltime varf | Limita superioara optionala; lasa gol pentru valoarea implicita a serverului |
+| Metoda | Camp | Buton |
+|--------|------|-------|
+| **Index SP** (implicit) | Server index SP + Inaltime varf optional | Scaneaza pentru plati |
+| **Esplora** | Endpoint Esplora + Inaltime varf (max 20 blocuri) | Scaneaza via Esplora |
+| **Frigate** | Server Frigate (`ssl://host:50002` sau `tcp://host:50001`) | Scaneaza via Frigate |
 
-Apasa **Scaneaza pentru plati**. Host-ul local interogheaza serverul de index pentru tweaks per bloc si efectueaza ECDH impotriva cheii tale de scanare pentru a gasi iesiri P2TR potrivite. Nu se trimite nicio informatie despre cheia privata la serverul de index.
+In toate modurile, host-ul local efectueaza ECDH impotriva cheii tale de scanare. Nicio informatie despre cheia privata nu paraseste dispozitivul. Vezi [Metode de scanare](#metode-de-scanare) pentru detalii.
 
 ### Pasul 4 - Sweep
 
@@ -282,12 +282,7 @@ Dintr-un portofel compatibil BIP-352, trimite la adresa `sp1...`. Noteaza:
 
 **5. Scaneaza**
 
-In ecranul Wallet, seteaza:
-- **Server de index SP**: `https://silentpayments.xyz/api` (implicit)
-- **Birthday height**: inaltimea blocului din pasul 1 (sau blocul de confirmare din pasul 4)
-- Lasa tip height gol
-
-Apasa **Scaneaza plati**. Daca plata a fost confirmata, UTXO-ul corespunzator apare.
+In ecranul Wallet, seteaza **Birthday height** la inaltimea blocului din pasul 1. Apasa **Scaneaza plati** (foloseste indexul SP implicit). Daca indexul nu este disponibil, incearca **Scaneaza via Esplora** sau **Scaneaza via Frigate** — vezi [Metode de scanare](#metode-de-scanare).
 
 **6. Sweep**
 
@@ -301,6 +296,38 @@ Introdu o adresa de destinatie si o rata de comision, apoi apasa **Construieste 
 | Expeditorul foloseste portofel BIP-352 standard | Adresele sp1 Nostru sunt compatibile cu ecosistemul |
 | Scanarea gaseste UTXO-ul | ECDH al host-ului nativ, interogarea serverului de index si derivarea cheilor functioneaza end-to-end |
 | Sweep-ul se confirma | Semnatura BIP-341 P2TR si semnatura Schnorr sunt corecte |
+
+---
+
+## Metode de scanare
+
+Sunt disponibile trei metode pentru detectarea Silent Payments primite. In toate cele trei, cheia privata de scanare ramane pe dispozitivul tau.
+
+| Metoda | Protocol | Ideal pentru |
+|--------|----------|-------------|
+| **Index SP** | REST HTTP | Implicit; rapid; necesita un server de index BIP-352 |
+| **Esplora** | REST HTTP | Fara index dedicat; preia blocuri brute local; max 20 blocuri per scanare |
+| **Frigate** | TCP / TLS (Electrum JSON-RPC) | Istoric complet; intervale mari; necesita un server Frigate |
+
+### Index SP
+
+Implicit: `https://silentpayments.xyz/api`. Serverul returneaza date tweak precomputed per bloc; host-ul local face ECDH.
+
+**Confidentialitate:** serverul de index vede IP-ul tau si intervalul de scanare (de la birthday la varf), dar nu cheia ta de scanare si nici UTXO-urile tale.
+
+### Esplora
+
+Preia tranzactii brute dintr-un API Esplora public sau self-hosted (`https://mempool.space` implicit) si calculeaza tweaks local. Nu necesita server de index SP dedicat. Limitat la 20 de blocuri per scanare.
+
+### Frigate
+
+[Frigate](https://github.com/sparrowwallet/frigate) este un server Electrum cu suport BIP-352. Transmite chei tweak `input_hash × A_sum` prin Electrum JSON-RPC; host-ul local efectueaza ECDH si potrivirea iesirilor P2TR. Cheia ta de scanare nu este trimisa niciodata la server.
+
+**Format conexiune:**
+- TLS: `ssl://host:50002`
+- TCP simplu: `tcp://host:50001`
+
+Pentru a rula propriul server Frigate, vezi [github.com/sparrowwallet/frigate](https://github.com/sparrowwallet/frigate).
 
 ---
 
