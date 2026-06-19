@@ -1,0 +1,245 @@
+# Nostru
+
+Un client social Nostr construit ca extensie de panou lateral pentru browser (Chrome MV3). Permite citirea si scrierea in reteaua Nostr, trimiterea de zaps cu un singur clic prin NWC si primirea de Bitcoin prin Silent Payments - totul fara a parasi browserul.
+
+---
+
+## Ce face
+
+| Functie | Descriere |
+|---------|-----------|
+| **Feed social** | Feed principal via modelul outbox Nostr (NDK), cu raspunsuri, reactii, reposturi si zaps |
+| **Profiluri** | Vizualizarea oricarui profil Nostr, urmarire/anulare urmarire, numar de urmatori |
+| **Cautare** | Cautare full-text in note, profiluri si articole, cu filtre de autor si data |
+| **Mesaje directe** | Mesaje criptate NIP-04 si NIP-44 (kind 4 / 1059) |
+| **Portofel NWC** | Zaps Lightning cu un clic via Nostr Wallet Connect; afisare sold |
+| **Liste de blocare/ignorare** | Lista de ignorare NIP-51 (kind 10000), publicata pe relay-uri; lista de blocare locala |
+| **Bridge NIP-07** | Actioneaza ca semnatar Nostr de tip web3 pentru dApp-uri; sistem de permisiuni per site |
+| **Adrese NSP** | Deriveaza o adresa BIP-352 Silent Payment din orice cheie publica Nostr - fara acordul destinatarului |
+| **Scanare NSP** | Detecteaza Silent Payments Bitcoin primite via un host nativ local (fara expunerea cheilor in cloud) |
+| **Sweep NSP** | Construieste si optional transmite o tranzactie de sweep semnata complet local |
+| **Notificari** | Sondare in fundal pentru mentiuni, zaps si DM-uri; notificari de sistem |
+
+---
+
+## Ce NU face
+
+| Ce | De ce |
+|----|-------|
+| Stocarea permanenta a cheilor private | Cheile traiesc doar in `chrome.storage.session` (sterse la inchiderea browserului) |
+| Trimiterea cheii de scanare la vreun server | Cheia privata de scanare este derivata in memorie in extensie si transmisa numai procesului nativ local via Chrome Native Messaging - niciodata prin retea |
+| Necesita cont pentru a afisa adrese NSP | Orice npub este suficient pentru a calcula adresa Silent Payment a cuiva |
+| Transmite tranzactii automat | Transmiterea este intotdeauna o actiune explicita a utilizatorului printr-un buton dedicat |
+| Colecteaza telemetrie | Zero analize, zero beacon-uri, zero scripturi terte |
+| Foloseste scanarea in cloud | Scanarea ruleaza local via `host.py` folosind un server de index configurat de utilizator doar pentru date de bloc (tweaks), niciodata pentru chei private |
+| Expune istoricul tranzactiilor | Iesirile Silent Payment nu sunt corelabile on-chain; fara reutilizare de xpub sau adrese |
+
+---
+
+## Fiecare cont Nostr este un receptor de Bitcoin Silent Payment
+
+Identitatile Nostr sunt perechi de chei secp256k1 - aceeasi curba eliptica pe care o foloseste Bitcoin. BIP-352 (Silent Payments) este construit tot pe secp256k1. Asta inseamna ca derivarea nu este un truc sau o solutie de compromis: este o consecinta matematica directa a aritmeticii comune pe curba.
+
+Derivarea de la orice cheie publica Nostr (`npub`) la o adresa Silent Payment (`sp1...`) functioneaza astfel:
+
+| Pas | Operatie | Cine poate face asta |
+|-----|----------|----------------------|
+| 1 | Se preia cheia publica Nostr x-only (32 bytes, Y-par conform BIP-340) | Oricine |
+| 2 | Se calculeaza `ScanPub = P + tagged_hash("nostr-sp/scan", P_compressed) * G` | Oricine |
+| 3 | Se calculeaza `SpendPub = P + tagged_hash("nostr-sp/spend", P_compressed) * G` | Oricine |
+| 4 | Se codifica ca `sp1... = bech32m([0x00] + ScanPub_33 + SpendPub_33)` | Oricine |
+| 5 | Detectarea platilor primite (derivare `scan_priv`, scanare blocuri via ECDH) | Doar detinatorul nsec |
+| 6 | Cheltuirea fondurilor primite (derivare `spend_priv + t_k`, semnare tx sweep) | Doar detinatorul nsec |
+
+Proprietatea cheie: pasii 1-4 necesita doar cheia publica si sunt deterministici. **Oricine iti poate gasi npub-ul te poate plati, fara a cere vreodata o adresa, fara sa fii online si fara nicio legatura on-chain intre doua plati catre tine.**
+
+Asta inseamna ca:
+
+- **Fiecare utilizator Nostr este deja un receptor de Bitcoin SP**, stie sau nu asta. Adresa exista in momentul in care exista perechea de chei.
+- **Graful social Nostr se dubleaza ca director de plati Bitcoin.** Daca urmezi pe cineva, il poti plati in tacere direct din profilul lui - fara ca el sa fi impartasit vreodata o adresa Bitcoin.
+- **Platile supravietuiesc rotatiei cheilor.** Un expeditor calculeaza adresa o data din npub, iar UTXO-urile rezultate sunt indistinguibile de orice alta iesire P2TR on-chain - fara reutilizare de adrese, fara grupare, fara corelare intre expeditori.
+- **Destinatarul nu trebuie sa ruleze Nostru.** Orice portofel compatibil BIP-352 poate trimite la o adresa sp1 derivata dintr-un npub. Destinatarul poate scana mai tarziu cu Nostru oricand doreste.
+
+Nostru face asta vizibil: deschide orice profil in extensie si adresa `sp1...` apare automat, calculata live in browserul tau din nimic altceva decat cheia publica a contului.
+
+---
+
+## De ce o extensie si nu un site web
+
+Scanarea Silent Payment necesita acces la o cheie privata de scanare care este echivalenta ca importanta cu cheia privata Nostr. Un site web - chiar si unul servit prin HTTPS sau din localhost - nu poate gestiona asta in siguranta. O extensie de browser poate.
+
+| Capabilitate | Extensie | Site web |
+|--------------|----------|----------|
+| Stocare de chei in memorie inaccesibila scripturilor de pagina | `chrome.storage.session` | Nu exista echivalent; variabilele JS sunt accesibile oricarui script injectat |
+| Comunicare cu un proces nativ local | `chrome.runtime.connectNative()` | Indisponibil - acest API este exclusiv pentru extensii |
+| Injectarea unui semnatar NIP-07 in fiecare pagina | Content scripts cu acces la lumea `MAIN` | Ar necesita oricum o extensie de browser |
+| Rularea de sarcini in fundal fara tab vizibil | Service worker + `chrome.alarms` | Necesita server sau tab intotdeauna deschis |
+| Panou lateral langa orice pagina web | `chrome.sidePanel` | Imposibil fara extensie |
+| Sistem de permisiuni per origine pentru acces la chei | `chrome.permissions` + store personalizat | Fara echivalent standard |
+
+**Blocajul critic pentru un site web care face NSP este Native Messaging.** `chrome.runtime.connectNative()` poate fi apelat doar din service worker-ele extensiei si din paginile extensiei - nu din nicio origine web, nici macar `localhost`. Nu exista solutie alternativa.
+
+Fara Native Messaging, un site web care face scanare NSP are exact doua optiuni:
+
+1. **Sa trimita cheia de scanare la un server.** Cheia privata de scanare este `nsec + tagged_hash(...)` - cine o detine poate monitoriza fiecare iesire Silent Payment adresata tie, pentru totdeauna. A o da unui server transforma un protocol de plata care pastreaza confidentialitatea intr-un instrument de supraveghere.
+
+2. **Sa scaneze in tab-ul browserului cu JavaScript.** Scanarea BIP-352 necesita multiplicare scalara secp256k1 pentru fiecare tranzactie din fiecare bloc de la inaltimea de nastere. La volumul tipic de retea (mii de tranzactii pe bloc, sute de blocuri de scanat), asta ar dura ore intr-un tab de browser - si s-ar opri in momentul in care tab-ul se inchide.
+
+Modelul de extensie rezolva ambele probleme elegant:
+
+- Service worker-ul din fundal deriveaza `scan_priv` in memorie din `nsec`-ul stocat in sesiune.
+- Transmite cheia direct procesului local `host.py` printr-un pipe Unix (Chrome Native Messaging). Pipe-ul este privat pentru perechea de procese OS.
+- `host.py` efectueaza computatia ECDH local, interogheaza doar datele de tweak per bloc (nu cheia) de la serverul de index si returneaza doar UTXO-urile care iti apartin.
+- Cheia de scanare nu este scrisa nicaieri. Daca browserul se inchide in mijlocul scanarii, dispare.
+
+Asta este posibil numai pentru ca extensia are `chrome.runtime.connectNative()`. Un site web, un PWA si o aplicatie web locala servita din `file://` sau `localhost` nu au aceasta capabilitate.
+
+---
+
+## De ce Nostru este o premiera
+
+**Nicio extensie de browser nu a combinat vreodata o identitate sociala Nostr cu Bitcoin Silent Payments.**
+
+Inovatia cheie este protocolul NSP (Nostr Silent Payments):
+
+1. **O singura cheie, doua retele.** Cheia ta privata Nostr (`nsec`) este un scalar secp256k1 - aceeasi curba pe care o foloseste Bitcoin. Nostru deriveaza chei BIP-352 de scanare si cheltuire din ea folosind hash-uri etichetate cu separare de domeniu (`nostr-sp/scan`, `nostr-sp/spend`), astfel incat unica ta cheie de identitate devine cheia ta de receptie Bitcoin.
+
+2. **Trimite oricarui utilizator Nostr, in mod privat.** Oricine iti cunoaste npub-ul poate calcula adresa ta Silent Payment (`sp1...`) fara a te intreba - si fara a crea o legatura intre doua plati on-chain. Un expeditor nu poate sti daca ai primit plata uitandu-se la blockchain. Nici altcineva care urmareste.
+
+3. **Cheia de scanare nu paraseste niciodata dispozitivul tau.** Cheia privata de scanare este echivalenta cu radacina nsec-ului tau. Nostru gestioneaza asta via Chrome Native Messaging: service worker-ul din fundal deriveaza cheia in memorie si o transmite direct unui proces Python local (`host.py`) printr-un pipe Unix. Cheia nu este niciodata scrisa pe disc, niciodata inregistrata in log-uri, niciodata trimisa prin retea.
+
+4. **Nu este necesar un nod blockchain.** Scanarea foloseste un server de index usor (configurabil de utilizator) care furnizeaza tweaks precomputate per tranzactie. Host-ul local verifica potrivirea criptografica si raporteaza numai UTXO-urile care iti apartin.
+
+5. **Sweep complet fara semnatura terta.** Host-ul local construieste si semneaza tranzactia de sweep BIP-341 P2TR complet in Python folosind zero dependente externe. Extensia primeste tranzactia bruta si iti permite sa o transmiti sau sa o copiezi pentru trimitere manuala.
+
+Combinatia - descoperire sociala via Nostr + plati primite silentioase + semnatura numai locala - nu a existat niciodata intr-o singura extensie de browser.
+
+---
+
+## Arhitectura
+
+```
+Browser (Chrome MV3)
+  sidepanel.html          <- Interfata React
+      WalletScreen        <- Controale NWC + NSP
+      ProfileView         <- afiseaza adresa sp1 derivata pentru orice npub
+  background.ts           <- service worker
+      Bridge NIP-07       <- semnatar web pentru dApp-uri
+      Sondare notificari  <- DM-uri, zaps, mentiuni
+      Handler SP          <- deriveaza chei in memorie, apeleaza host-ul nativ
+         |
+         | Chrome Native Messaging (stdin/stdout, prefix lungime LE 4 bytes)
+         v
+  host.py (proces local, fara acces la retea pentru chei)
+      identify            <- verificare versiune si capabilitati
+      scan                <- scanare ECDH BIP-352 peste tweaks de la serverul de index
+      sweep               <- constructie tx BIP-341 P2TR + semnatura Schnorr
+```
+
+---
+
+## Silent Payments - Cum se foloseste
+
+### Pasul 1 - Instalarea host-ului nativ
+
+Logica de scanare si semnare ruleaza ca script Python local. Nu are dependente externe (stdlib Python 3.9+ pur).
+
+```bash
+git clone https://github.com/i2dor/nostru
+cd nostru/tools/nostru-sp
+python3 install.py --extension-id=<ID_EXTENSIE_TA>
+```
+
+Gaseste ID-ul extensiei tale la `chrome://extensions` (activeaza modul Developer). Ecranul Portofel il afiseaza automat in asistentul de configurare.
+
+Pentru a verifica instalarea:
+
+```bash
+python3 install.py --verify
+```
+
+Pentru dezinstalare:
+
+```bash
+python3 install.py --uninstall
+```
+
+### Pasul 2 - Deblocarea Nostru
+
+Autentifica-te cu nsec-ul tau. Cheia privata traieste doar in stocarea de sesiune si este folosita pentru a deriva cheile de scanare si cheltuire la cerere.
+
+### Pasul 3 - Scanarea pentru plati
+
+Deschide ecranul Portofel, extinde "Silent Payments (NSP)" si completeaza:
+
+| Camp | Ce sa introduci |
+|------|-----------------|
+| Server index SP | URL-ul unui index BIP-352 (implicit: silentpayments.xyz/api) |
+| Inaltime de nastere | Inaltimea blocului de la care sa inceapa scanarea (foloseste inaltimea cand ai impartasit prima data adresa ta sp1) |
+| Inaltime varf | Limita superioara optionala; lasa gol pentru valoarea implicita a serverului |
+
+Apasa **Scaneaza pentru plati**. Host-ul local interogheaza serverul de index pentru tweaks per bloc si efectueaza ECDH impotriva cheii tale de scanare pentru a gasi iesiri P2TR potrivite. Nu se trimite nicio informatie despre cheia privata la serverul de index.
+
+### Pasul 4 - Sweep
+
+Odata gasite UTXO-urile, introdu o adresa Bitcoin de destinatie si o rata de comision (sat/vB), apoi apasa **Construieste tranzactia de sweep**. Host-ul local:
+
+1. Deriveaza scalarul de cheltuire per iesire (`b_spend + t_k mod n`)
+2. Calculeaza sighash-ul BIP-341 pentru fiecare input
+3. Semneaza cu BIP-340 Schnorr folosind o valoare aux aleatoare
+4. Returneaza tranzactia serialzata bruta
+
+Dupa aceea poti:
+- **Copiaza TX bruta** - lipeste in orice instrument de transmitere Bitcoin
+- **Transmite** - trimite direct la mempool.space/api/tx
+
+---
+
+## Primirea platilor NSP (impartasirea adresei tale)
+
+Adresa ta Silent Payment este vizibila pe propria ta fisa de profil din extensie. Poti calcula si adresa sp1 a oricui altcuiva din npub-ul lor - apare automat in vizualizarea profilului sau.
+
+Impartaseste-ti adresa sp1 la fel cum ai impartasi orice adresa Bitcoin. Expeditorii folosesc un portofel standard compatibil BIP-352; nu au nevoie sa stie nimic despre Nostr.
+
+---
+
+## Configurarea relay-urilor
+
+Relay-urile implicite sunt listate in `src/core/ndk/config.ts`. Poti adauga sau elimina relay-uri din Setari. Modificarile intra in vigoare imediat.
+
+---
+
+## Permisiuni
+
+| Permisiune | De ce |
+|------------|-------|
+| `storage` | Salvarea conturilor, relay-urilor, blocurilor, ignorarilor, URI NWC |
+| `sidePanel` | Deschiderea ca bara laterala a browserului |
+| `nativeMessaging` | Conectarea la host-ul local `nostru.sp` pentru scanare/sweep Silent Payment |
+| `notifications` | Notificari de sistem pentru mentiuni, zaps si DM-uri |
+| `alarms` | Sondare in fundal la fiecare 5 minute |
+| `windows` | Deschiderea popup-ului de aprobare NIP-07 |
+| `host_permissions: https://*/*` | Rezolvare LNURL, NWC, obtinere facturi Lightning |
+
+---
+
+## Compilare din sursa
+
+```bash
+npm install
+npm run build        # build de productie -> dist/chrome-mv3/
+npm run dev          # mod dev cu HMR
+npm test             # teste unitare vitest
+```
+
+Incarca `dist/chrome-mv3/` ca extensie neimpachetata in Chrome.
+
+---
+
+## Note de securitate
+
+- **nsec nu paraseste niciodata browserul.** Cheia privata bruta este stocata in `chrome.storage.session` (numai memorie, stearsa la inchiderea browserului) si accesata numai de service worker-ul din fundal.
+- **scan_priv si spend_priv sunt derivate la cerere** si transmise numai host-ului nativ via stdin. Nu sunt niciodata scrise pe disc, niciodata inregistrate in log-uri, niciodata incluse in nicio cerere de retea.
+- **Host-ul nativ este sandboxat.** Chrome Native Messaging limiteaza host-ul sa comunice numai cu extensii care listeaza numele sau in `allowed_origins`. Calea binarului host si ID-ul extensiei permise sunt setate la momentul instalarii.
+- **Nu exista secrete in acest depozitar.** Documentele de configurare folosesc substituenti; testele folosesc chei de test generate.
+- **Necorelabilitatea iesirilor BIP-352** inseamna ca, chiar daca serverul de index este compromis, acesta afla numai ca cineva a scanat un interval de blocuri - nu ce iesiri iti apartin, deoarece pasul ECDH se produce local.
