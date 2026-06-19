@@ -28,9 +28,9 @@ export function deriveNspAddress(pubkeyHex: string): string {
   const ScanPub = P.add(G.multiply(t_scan));
   const SpendPub = P.add(G.multiply(t_spend));
 
-  // BIP-352 address: bech32m("sp", [version=0x00] + scanPub33 + spendPub33)
-  const payload = new Uint8Array([0x00, ...ScanPub.toBytes(true), ...SpendPub.toBytes(true)]);
-  return bech32m.encode('sp', bech32m.toWords(payload), 1000);
+  // BIP-352: version byte is a single 5-bit word (value 0), NOT converted with toWords
+  const payload = concatBytes(ScanPub.toBytes(true), SpendPub.toBytes(true)); // 66 bytes
+  return bech32m.encode('sp', [0, ...bech32m.toWords(payload)], 1000);
 }
 
 // These are used only by background.ts when talking to the native host.

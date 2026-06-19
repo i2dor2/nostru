@@ -25,9 +25,9 @@ describe('deriveNspAddress', () => {
     expect(deriveNspAddress(PUB_G)).not.toBe(deriveNspAddress(PUB_2G));
   });
 
-  it('produces a 117-char address (correct bech32m encoding)', () => {
-    // sp1 + 1-byte version + 33-byte scan + 33-byte spend = 67 bytes payload
-    expect(deriveNspAddress(PUB_G)).toHaveLength(117);
+  it('produces a 116-char address (correct bech32m encoding)', () => {
+    // "sp1" (3) + version word "q" (1) + toWords(66 bytes scan+spend) (106) + checksum (6) = 116
+    expect(deriveNspAddress(PUB_G)).toHaveLength(116);
   });
 });
 
