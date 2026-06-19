@@ -3,7 +3,10 @@ import {
   IconWallet, IconUnlink, IconBolt, IconScan, IconCopy, IconCheck,
   IconAlertTriangle, IconLoader2, IconBroadcast, IconChevronDown, IconChevronUp,
 } from '@tabler/icons-react';
+import { NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk';
 import { useWallet } from '../context/WalletContext';
+import { useNDK } from '../../core/ndk';
+import { useAccount } from '../context/AccountContext';
 
 // ── NWC Wallet ────────────────────────────────────────────────────────────
 
@@ -135,6 +138,9 @@ function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) 
 }
 
 function SpSection() {
+  const { ndk } = useNDK();
+  const { session } = useAccount();
+
   const [status, setStatus] = useState<SpStatus>('checking');
   const [statusErr, setStatusErr] = useState('');
   const [open, setOpen] = useState(false);
@@ -144,6 +150,8 @@ function SpSection() {
   const [tip, setTip] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanErr, setScanErr] = useState('');
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverErr, setDiscoverErr] = useState('');
   const [utxos, setUtxos] = useState<SpUtxo[]>([]);
 
   const [dest, setDest] = useState('');
@@ -189,6 +197,42 @@ function SpSection() {
       setScanning(false);
     }
   }, [server, birthday, tip]);
+
+  const handleDiscover = useCallback(async () => {
+    if (!ndk || session.status !== 'unlocked') return;
+    const pubkey = session.account.pubkey;
+
+    setDiscovering(true);
+    setDiscoverErr('');
+    try {
+      // Fetch up to 500 recent events from relays; take the oldest timestamp
+      // as an approximation of when this npub first appeared.
+      const events = await ndk.fetchEvents(
+        { authors: [pubkey], limit: 500 },
+        { cacheUsage: NDKSubscriptionCacheUsage.ONLY_RELAY },
+      );
+      if (!events.size) throw new Error('No events found on connected relays');
+
+      const oldestTs = [...events].reduce(
+        (min, ev) => Math.min(min, ev.created_at ?? Infinity),
+        Infinity,
+      );
+      if (!isFinite(oldestTs)) throw new Error('Could not read event timestamps');
+
+      // Apply a 1-week safety margin: npub may have been shared before first event.
+      const safeTs = Math.max(0, oldestTs - 7 * 24 * 3600);
+
+      const res = await fetch(`https://mempool.space/api/v1/mining/blocks/timestamp/${safeTs}`);
+      if (!res.ok) throw new Error(`Block lookup failed: ${res.status}`);
+      const data = await res.json() as { height: number };
+
+      setBirthday(String(data.height));
+    } catch (e) {
+      setDiscoverErr(e instanceof Error ? e.message : 'Discovery failed');
+    } finally {
+      setDiscovering(false);
+    }
+  }, [ndk, session]);
 
   const handleSweep = useCallback(async () => {
     if (!dest.trim() || utxos.length === 0) return;
@@ -330,6 +374,16 @@ function SpSection() {
                     placeholder="e.g. 840000"
                     className="w-full px-2 py-1.5 text-xs rounded border border-zinc-200 dark:border-zinc-700 bg-transparent focus:outline-none focus:ring-1 focus:ring-accent"
                   />
+                  <button
+                    onClick={() => void handleDiscover()}
+                    disabled={discovering || !ndk || session.status !== 'unlocked'}
+                    className="mt-1 text-xs text-accent hover:underline disabled:opacity-40 flex items-center gap-1"
+                  >
+                    {discovering
+                      ? <><IconLoader2 size={10} className="animate-spin" />Discovering...</>
+                      : 'Discover from relays'}
+                  </button>
+                  {discoverErr && <p className="text-xs text-red-500 mt-0.5">{discoverErr}</p>}
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs text-zinc-400 mb-1">Tip height (opt)</label>
