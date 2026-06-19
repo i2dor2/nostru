@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   IconWallet, IconUnlink, IconBolt, IconScan, IconCopy, IconCheck,
   IconAlertTriangle, IconLoader2, IconBroadcast, IconChevronDown, IconChevronUp,
+  IconPencil, IconX,
 } from '@tabler/icons-react';
 import { NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk';
 import { useWallet } from '../context/WalletContext';
 import { useNDK } from '../../core/ndk';
 import { useAccount } from '../context/AccountContext';
+import { deriveNspAddress } from '../../core/nsp';
+import { getCustomSpAddress, setCustomSpAddress } from '../../core/store/customSp';
 
 // ── NWC Wallet ────────────────────────────────────────────────────────────
 
@@ -162,6 +165,25 @@ function SpSection() {
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState('');
 
+  const [customSpAddress, setCustomSpAddressState] = useState<string | null>(null);
+  const [editingSpAddr, setEditingSpAddr] = useState(false);
+  const [spAddrDraft, setSpAddrDraft] = useState('');
+
+  const pubkey = session.status === 'unlocked' ? session.account.pubkey : '';
+  const derivedSpAddress = pubkey ? (() => { try { return deriveNspAddress(pubkey); } catch { return null; } })() : null;
+  const displaySpAddress = customSpAddress ?? derivedSpAddress;
+
+  useEffect(() => {
+    if (pubkey) getCustomSpAddress(pubkey).then(setCustomSpAddressState);
+  }, [pubkey]);
+
+  const saveSpAddr = useCallback(async () => {
+    const trimmed = spAddrDraft.trim();
+    await setCustomSpAddress(pubkey, trimmed || null);
+    setCustomSpAddressState(trimmed || null);
+    setEditingSpAddr(false);
+  }, [pubkey, spAddrDraft]);
+
   const extensionId = chrome.runtime.id;
   const installCmd = `python3 install.py --extension-id=${extensionId}`;
 
@@ -307,6 +329,45 @@ function SpSection() {
 
       {open && (
         <div className="mt-4 space-y-4">
+          {displaySpAddress && !editingSpAddr && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+              <span className="text-xs font-mono text-zinc-500 truncate flex-1" title={displaySpAddress}>
+                {displaySpAddress.slice(0, 20)}...
+              </span>
+              {customSpAddress && (
+                <span className="text-[10px] text-amber-500 shrink-0">custom</span>
+              )}
+              <CopyButton text={displaySpAddress} />
+              <button
+                onClick={() => { setSpAddrDraft(customSpAddress ?? ''); setEditingSpAddr(true); }}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 shrink-0"
+                title="Set custom SP address"
+              >
+                <IconPencil size={12} />
+              </button>
+            </div>
+          )}
+          {editingSpAddr && (
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-400 block">
+                Custom SP address{' '}
+                <span className="text-zinc-300 dark:text-zinc-600">(leave blank to use derived)</span>
+              </label>
+              <input
+                value={spAddrDraft}
+                onChange={e => setSpAddrDraft(e.target.value)}
+                placeholder={derivedSpAddress ?? 'sp1...'}
+                className="w-full px-2 py-1.5 text-xs font-mono rounded border border-zinc-200 dark:border-zinc-700 bg-transparent focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => void saveSpAddr()} className="text-xs px-3 py-1 rounded-full bg-accent text-white hover:bg-accent/90">Save</button>
+                <button onClick={() => setEditingSpAddr(false)} className="text-xs px-3 py-1 rounded-full border border-zinc-300 dark:border-zinc-600 text-zinc-500 hover:text-zinc-700 flex items-center gap-1"><IconX size={10} /> Cancel</button>
+                {customSpAddress && (
+                  <button onClick={async () => { await setCustomSpAddress(pubkey, null); setCustomSpAddressState(null); setEditingSpAddr(false); }} className="text-xs text-red-400 hover:text-red-500 ml-auto">Reset to derived</button>
+                )}
+              </div>
+            </div>
+          )}
           {status === 'not-installed' && (
             <div className="space-y-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
               <p className="text-xs font-medium text-amber-700 dark:text-amber-400">

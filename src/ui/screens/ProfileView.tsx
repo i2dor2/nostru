@@ -14,6 +14,7 @@ import {
   IconCopy,
 } from '@tabler/icons-react';
 import { deriveNspAddress } from '../../core/nsp';
+import { getCustomSpAddress } from '../../core/store/customSp';
 import { zapInvoiceFromEvent, type NDKEvent } from '@nostr-dev-kit/ndk';
 import { useNDK } from '../../core/ndk';
 import { useProfile, useFollows, useFeed, useNip05, useBlocks, useMutes } from '../feed/hooks';
@@ -123,11 +124,12 @@ function ZapCard({ event }: { event: NDKEvent }) {
   );
 }
 
-function NspRow({ pubkey }: { pubkey: string }) {
+function NspRow({ pubkey, overrideAddress }: { pubkey: string; overrideAddress?: string | null }) {
   const [copied, setCopied] = useState(false);
   const address = useMemo(() => {
+    if (overrideAddress) return overrideAddress;
     try { return deriveNspAddress(pubkey); } catch { return null; }
-  }, [pubkey]);
+  }, [pubkey, overrideAddress]);
 
   if (!address) return null;
 
@@ -197,6 +199,11 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [zapOpen, setZapOpen] = useState(false);
+  const [customSpAddress, setCustomSpAddressState] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isSelf) getCustomSpAddress(pubkey).then(setCustomSpAddressState);
+  }, [isSelf, pubkey]);
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [editState, setEditState] = useState<EditState>({
     name: '', displayName: '', about: '', website: '', lud16: '',
@@ -506,7 +513,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
                   <span className="text-zinc-400 ml-1">followers</span>
                 </button>
               </div>
-              <NspRow pubkey={pubkey} />
+              <NspRow pubkey={pubkey} overrideAddress={isSelf ? customSpAddress : undefined} />
             </div>
           )}
         </div>
