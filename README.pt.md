@@ -4,7 +4,7 @@ Identidade Nostr. Bitcoin Silent Payments. Uma chave.
 
 > _"Nostru" e a palavra romena para "nosso" - suas chaves, sua identidade._
 
-Um cliente social Nostr construido como extensao de painel lateral do navegador (Chrome MV3). Permite ler e escrever na rede Nostr, enviar zaps com um clique via NWC e receber Bitcoin atraves de Silent Payments - tudo sem sair do navegador.
+Um cliente social Nostr construido como extensao de navegador (Chrome MV3). Permite ler e escrever na rede Nostr, enviar zaps com um clique via NWC e receber Bitcoin atraves de Silent Payments - tudo sem sair do navegador.
 
 ---
 
@@ -315,7 +315,7 @@ Os relays padrao estao listados em `src/core/ndk/config.ts`. Voce pode adicionar
 | Permissao | Por que |
 |-----------|---------|
 | `storage` | Salvar contas, relays, bloqueios, silencios, URI NWC |
-| `sidePanel` | Abrir como barra lateral do navegador |
+| `sidePanel` | Abrir como barra lateral ou aba nova |
 | `nativeMessaging` | Conectar ao host local `nostru.sp` para varredura/sweep Silent Payment |
 | `notifications` | Notificacoes do sistema para mencoes, zaps e DMs |
 | `alarms` | Sondagem em segundo plano a cada 5 minutos |
