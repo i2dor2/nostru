@@ -243,3 +243,34 @@ Carregue `dist/chrome-mv3/` como extensao desempacotada no Chrome.
 - **O host nativo e sandboxed.** O Chrome Native Messaging limita o host a se comunicar apenas com extensoes que listam seu nome em `allowed_origins`. O caminho do binario do host e o ID de extensao permitido sao definidos no momento da instalacao.
 - **Nao ha segredos neste repositorio.** Os documentos de configuracao usam marcadores de posicao; os testes usam chaves de teste geradas.
 - **A desvinculabilidade de saidas BIP-352** significa que, mesmo que o servidor de indice seja comprometido, ele aprende apenas que alguem varreu um intervalo de blocos - nao quais saidas pertencem a voce, pois a etapa ECDH ocorre localmente.
+
+---
+
+## Como nao se doxxar
+
+Silent Payments quebram a analise em cadeia: dois pagamentos ao mesmo npub produzem saidas sem relacao na blockchain. Mas o mapeamento do seu npub para o seu endereco SP e publico, deterministico e permanente - nao na blockchain, mas na camada de identidade. Se o seu npub e a sua identidade social publica, qualquer remetente que consulte o seu perfil ja sabe que esta pagando *voce*.
+
+Estes sao os riscos praticos e o que fazer em cada caso:
+
+| Risco | O que vaza | Medida |
+|-------|-----------|--------|
+| **O npub e a sua identidade de pagamento** | O seu endereco SP pode ser calculado por qualquer pessoa a partir do seu npub. Um nome real, dominio NIP-05 ou foto no seu perfil kind:0 vincula o seu endereco de recepcao Bitcoin a essa identidade de forma permanente. | Publique apenas o que estiver disposto a ter vinculado ao seu endereco SP para sempre. |
+| **Exposicao de IP nos relays** | Cada relay registra o seu IP junto ao seu npub. Varios operadores podem correlacionar voce entre sessoes. | Roteie o trafego de relay pelo Tor ou uma VPN. |
+| **Servidor de indice SP** | O servidor de indice (padrao: silentpayments.xyz) ve o seu IP e o seu intervalo de varredura (bloco inicial ate a ponta). Nao ve a sua chave privada nem quais UTXOs sao seus. | Hospede o seu proprio indice ou roteie as requisicoes pelo Tor. Defina uma URL de servidor personalizada na tela de Wallet. |
+| **Transmissao de transacoes** | A transmissao integrada envia a transacao bruta para o mempool.space - esse endpoint ve o seu IP e a transacao. | Use o seu proprio no Bitcoin ou copie a TX bruta e envie pelo Tor com uma ferramenta separada. |
+| **NWC URI** | Sua URI `nostrwalletconnect://` e uma credencial de portador. Quem a obtiver pode esvaziar a sua carteira ate o limite de gasto configurado. | Nunca a publique, tire screenshot ou cole em um documento compartilhado. Trate-a com o mesmo cuidado que o seu nsec. |
+| **Metadados kind:0 sao permanentes** | Nome, imagem, NIP-05 e bio sao publicados nos relays e ficam permanentemente vinculados ao seu npub - e portanto ao seu endereco SP. | Revise o seu perfil antes de compartilhar publicamente o seu endereco sp1. |
+
+**Separacao de identidades**
+
+Para maior privacidade, use um par de chaves dedicado a pagamentos:
+
+1. Gere um segundo par de chaves (`nsec2`) que nunca vincule a um perfil publico e nunca use para notas sociais.
+2. Derive o seu endereco SP e compartilhe apenas esse com remetentes especificos.
+3. Use o Nostru com `nsec2` exclusivamente para varredura e sweep.
+
+O endereco SP derivado de `nsec2` e completamente separado do seu npub social. Os remetentes precisam do npub de pagamento ou do endereco sp1 diretamente - nao podem encontra-lo no seu perfil publico.
+
+**O que voce nao pode desfazer**
+
+O mapeamento de npub para endereco SP e deterministico e permanente. Se voce ja publicou amplamente o seu npub, qualquer remetente pode calcular o seu endereco SP e podera faze-lo permanentemente. Nao existe mecanismo de rotacao exceto rotacionar o proprio npub.

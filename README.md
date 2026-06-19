@@ -243,3 +243,34 @@ Load `dist/chrome-mv3/` as an unpacked extension in Chrome.
 - **The native host is sandboxed.** Chrome Native Messaging limits the host to communicating only with extensions that list its name in `allowed_origins`. The host binary path and the allowed extension ID are set at install time.
 - **No secrets in this repository.** Setup docs use placeholders; tests use generated throwaway keys.
 - **BIP-352 output unlinkability** means that even if the index server is compromised, it learns only that someone scanned a block range - not which outputs belong to you, because the ECDH step happens locally.
+
+---
+
+## How not to dox yourself
+
+Silent Payments break on-chain analysis: two payments to the same npub produce unrelated outputs on-chain. But the mapping from your npub to your SP address is public, deterministic, and permanent - not on the blockchain, but at the identity layer. If your npub is your public social identity, every sender who looks up your profile already knows they are paying *you*.
+
+These are the practical risks and what to do about each:
+
+| Risk | What leaks | Mitigation |
+|------|-----------|-----------|
+| **npub is your payment identity** | Your SP address is computable from your npub by anyone. A real name, NIP-05 domain, or photo in your kind:0 profile links your Bitcoin receiving address to that identity permanently. | Publish only what you are comfortable having linked to your SP address forever. |
+| **Relay IP exposure** | Every relay logs your IP alongside your npub. Multiple operators can correlate you across sessions. | Route relay traffic through Tor or a VPN before connecting. |
+| **SP index server** | The index server (default: silentpayments.xyz) sees your IP and your scan range (birthday block to tip). It does not see your private key or which UTXOs are yours. | Self-host an index, or route requests through Tor. Set a custom server URL in the Wallet screen. |
+| **Transaction broadcast** | The built-in broadcast sends the raw transaction to mempool.space - that endpoint sees your IP and the transaction. | Use your own Bitcoin node, or copy the raw TX and submit it through Tor via a separate tool. |
+| **NWC URI** | Your `nostrwalletconnect://` URI is a bearer credential. Anyone who gets it can drain your wallet up to the configured spend limit. | Never post it, screenshot it, or paste it in a shared document. Treat it with the same care as your nsec. |
+| **Kind:0 metadata is permanent** | Name, picture, NIP-05, and bio are published to relays and permanently tied to your npub - and therefore to your SP address. | Audit your profile before sharing your sp1 address publicly. |
+
+**Separation of identities**
+
+For higher privacy, use a dedicated keypair for payments:
+
+1. Generate a second keypair (`nsec2`) that you never attach to a public profile and never use for social notes.
+2. Derive its SP address and share only that with specific senders.
+3. Use Nostru with `nsec2` solely for scanning and sweeping.
+
+The SP address derived from `nsec2` is completely separate from your social npub. Senders need the payment npub or the sp1 address directly - they cannot find it from your public profile.
+
+**What you cannot undo**
+
+The npub-to-SP-address mapping is deterministic and permanent. If you have already published your npub widely, every sender can already compute your SP address and will be able to do so permanently. There is no rotation mechanism short of rotating the npub itself.

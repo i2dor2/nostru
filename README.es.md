@@ -243,3 +243,34 @@ Carga `dist/chrome-mv3/` como extension sin empaquetar en Chrome.
 - **El host nativo esta en sandbox.** Chrome Native Messaging limita al host a comunicarse unicamente con extensiones que listen su nombre en `allowed_origins`. La ruta del binario del host y el ID de extension permitido se establecen en el momento de la instalacion.
 - **No hay secretos en este repositorio.** Los documentos de configuracion usan marcadores de posicion; los tests usan claves de prueba generadas.
 - **La desvinculabilidad de outputs BIP-352** significa que incluso si el servidor de indice se ve comprometido, solo aprende que alguien escaneo un rango de bloques - no que outputs te pertenecen, porque el paso ECDH ocurre localmente.
+
+---
+
+## Como no doxxearte a ti mismo
+
+Silent Payments rompen el analisis en cadena: dos pagos al mismo npub producen outputs sin relacion en la blockchain. Pero la correspondencia de tu npub a tu direccion SP es publica, determinista y permanente - no en la blockchain, sino en la capa de identidad. Si tu npub es tu identidad social publica, cualquier remitente que consulte tu perfil ya sabe que te esta pagando *a ti*.
+
+Estos son los riesgos practicos y que hacer ante cada uno:
+
+| Riesgo | Que se filtra | Medida |
+|--------|--------------|--------|
+| **El npub es tu identidad de pago** | Tu direccion SP puede ser calculada por cualquiera a partir de tu npub. Un nombre real, dominio NIP-05 o foto en tu perfil kind:0 vincula tu direccion de recepcion Bitcoin con esa identidad de forma permanente. | Publica solo lo que estes dispuesto a tener vinculado con tu direccion SP para siempre. |
+| **Exposicion de IP en relays** | Cada relay registra tu IP junto a tu npub. Varios operadores pueden correlacionarte entre sesiones. | Enruta el trafico de relay a traves de Tor o una VPN. |
+| **Servidor de indice SP** | El servidor de indice (por defecto: silentpayments.xyz) ve tu IP y tu rango de escaneo (bloque inicial hasta la punta). No ve tu clave privada ni que UTXOs te pertenecen. | Aloja tu propio indice o enruta las solicitudes a traves de Tor. Establece una URL de servidor personalizada en la pantalla de Wallet. |
+| **Difusion de transacciones** | La difusion integrada envia la transaccion en bruto a mempool.space - ese endpoint ve tu IP y la transaccion. | Usa tu propio nodo Bitcoin o copia la TX en bruto y enviala a traves de Tor con una herramienta separada. |
+| **NWC URI** | Tu URI `nostrwalletconnect://` es una credencial de portador. Quien la obtenga puede vaciar tu wallet hasta el limite de gasto configurado. | Nunca la publiques, hagas captura de pantalla ni la pegues en un documento compartido. Tratala con el mismo cuidado que tu nsec. |
+| **Metadatos kind:0 son permanentes** | Nombre, imagen, NIP-05 y bio se publican en relays y quedan permanentemente vinculados a tu npub - y por tanto a tu direccion SP. | Revisa tu perfil antes de compartir tu direccion sp1 publicamente. |
+
+**Separacion de identidades**
+
+Para mayor privacidad, usa un par de claves dedicado a pagos:
+
+1. Genera un segundo par de claves (`nsec2`) que nunca vincules a un perfil publico y nunca uses para notas sociales.
+2. Deriva su direccion SP y comparte solo esa con remitentes especificos.
+3. Usa Nostru con `nsec2` exclusivamente para escanear y hacer sweep.
+
+La direccion SP derivada de `nsec2` es completamente independiente de tu npub social. Los remitentes necesitan el npub de pago o la direccion sp1 directamente - no pueden encontrarla en tu perfil publico.
+
+**Lo que no puedes deshacer**
+
+La correspondencia npub-a-direccion-SP es determinista y permanente. Si ya has publicado tu npub ampliamente, cualquier remitente puede calcular tu direccion SP y podra hacerlo de forma permanente. No existe mecanismo de rotacion excepto rotar el npub mismo.

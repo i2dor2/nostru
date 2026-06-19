@@ -243,3 +243,34 @@ Lade `dist/chrome-mv3/` als entpackte Erweiterung in Chrome.
 - **Der native Host ist sandboxed.** Chrome Native Messaging beschraenkt den Host darauf, nur mit Erweiterungen zu kommunizieren, die seinen Namen in `allowed_origins` auflisten. Der Host-Binaerpfad und die erlaubte Erweiterungs-ID werden bei der Installation festgelegt.
 - **Keine Geheimnisse in diesem Repository.** Setup-Dokumente verwenden Platzhalter; Tests verwenden generierte Wegwerf-Schluessel.
 - **Die Output-Unkorrelierbarkeit von BIP-352** bedeutet, dass selbst wenn der Indexserver kompromittiert wird, er nur erfaehrt, dass jemand einen Blockbereich gescannt hat - nicht welche Outputs dir gehoeren, da der ECDH-Schritt lokal erfolgt.
+
+---
+
+## Wie man sich nicht selbst doxxed
+
+Silent Payments brechen die On-Chain-Analyse: Zwei Zahlungen an denselben npub erzeugen unkorrelierbare Outputs auf der Blockchain. Die Abbildung von deinem npub auf deine SP-Adresse ist jedoch oeffentlich, deterministisch und permanent - nicht auf der Blockchain, sondern auf der Identitaetsebene. Wenn dein npub deine oeffentliche soziale Identitaet ist, weiss jeder Absender, der dein Profil aufruft, bereits, dass er *dich* bezahlt.
+
+Dies sind die praktischen Risiken und was dagegen zu tun ist:
+
+| Risiko | Was durchsickert | Gegenmassnahme |
+|--------|-----------------|----------------|
+| **npub ist deine Zahlungsidentitaet** | Deine SP-Adresse kann von jedem aus deinem npub berechnet werden. Ein echter Name, eine NIP-05-Domain oder ein Foto in deinem kind:0-Profil verknuepft deine Bitcoin-Empfangsadresse dauerhaft mit dieser Identitaet. | Veroeffentliche nur, was du dauerhaft mit deiner SP-Adresse verknuepft haben moechtest. |
+| **Relay-IP-Offenlegung** | Jedes Relay protokolliert deine IP zusammen mit deinem npub. Mehrere Betreiber koennen dich sitzungsuebergreifend korrelieren. | Leite Relay-Traffic ueber Tor oder ein VPN. |
+| **SP-Indexserver** | Der Indexserver (Standard: silentpayments.xyz) sieht deine IP und deinen Scan-Bereich (Geburtsblock bis Spitze). Er sieht weder deinen privaten Schluessel noch welche UTXOs dir gehoeren. | Betreibe einen eigenen Index oder leite Anfragen ueber Tor. Setze eine benutzerdefinierte Server-URL im Wallet-Bildschirm. |
+| **Transaktionsbroadcast** | Der eingebaute Broadcast sendet die Rohtransaktion an mempool.space - dieser Endpunkt sieht deine IP und die Transaktion. | Verwende deinen eigenen Bitcoin-Knoten oder kopiere die Rohtransaktion und uebertrage sie ueber Tor mit einem separaten Tool. |
+| **NWC-URI** | Deine `nostrwalletconnect://`-URI ist ein Bearer-Credential. Wer sie erhaelt, kann dein Wallet bis zum konfigurierten Ausgabelimit leeren. | Veroeffentliche sie niemals, mache keinen Screenshot davon und fuege sie nicht in ein gemeinsam genutztes Dokument ein. Behandle sie mit derselben Sorgfalt wie deinen nsec. |
+| **Kind:0-Metadaten sind permanent** | Name, Bild, NIP-05 und Bio werden an Relays veroeffentlicht und dauerhaft mit deinem npub - und damit mit deiner SP-Adresse - verknuepft. | Pruefe dein Profil, bevor du deine sp1-Adresse oeffentlich teilst. |
+
+**Trennung der Identitaeten**
+
+Fuer hoehere Privatsphaere verwende ein dediziertes Schluesselpaar fuer Zahlungen:
+
+1. Generiere ein zweites Schluesselpaar (`nsec2`), das du nie an ein oeffentliches Profil knoepfst und nie fuer soziale Notizen verwendest.
+2. Leite dessen SP-Adresse ab und teile nur diese mit bestimmten Absendern.
+3. Verwende Nostru mit `nsec2` ausschliesslich zum Scannen und Sweepen.
+
+Die von `nsec2` abgeleitete SP-Adresse ist vollstaendig von deinem sozialen npub getrennt. Absender benoetigen den Zahlungs-npub oder die sp1-Adresse direkt - sie koennen sie nicht aus deinem oeffentlichen Profil finden.
+
+**Was du nicht rueckgaengig machen kannst**
+
+Die npub-zu-SP-Adress-Abbildung ist deterministisch und permanent. Wenn du deinen npub bereits weit verbreitet hast, kann jeder Absender deine SP-Adresse bereits berechnen und wird dies dauerhaft koennen. Es gibt keinen Rotationsmechanismus ausser dem Rotieren des npub selbst.
