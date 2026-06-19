@@ -1,5 +1,9 @@
 # Nostru
 
+Identidad Nostr. Bitcoin Silent Payments. Una clave.
+
+> _"Nostru" es la palabra rumana para "nuestro" - tus claves, tu identidad._
+
 Un cliente social Nostr construido como extension de panel lateral del navegador (Chrome MV3). Permite leer y escribir en la red Nostr, enviar zaps con un clic via NWC, y recibir Bitcoin mediante Silent Payments - todo sin salir del navegador.
 
 ---

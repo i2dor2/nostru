@@ -40,6 +40,7 @@ type MainView = 'app' | 'permissions' | 'settings' | 'wallet';
 
 function AccountSwitcher({ onNavigate }: { onNavigate: (view: MainView) => void }) {
   const { session, switchAccount, lock, deleteAccount } = useAccount();
+  const { push } = useNav();
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const npub = useNpub();
@@ -56,11 +57,18 @@ function AccountSwitcher({ onNavigate }: { onNavigate: (view: MainView) => void 
         <IconSettings size={16} />
       </button>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => { push({ view: 'profile', pubkey: session.account.pubkey }); setOpen(false); }}
         className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+        aria-label="View your profile"
       >
         <IconUserCircle size={16} />
         <span className="font-mono">{npub ? truncateNpub(npub, 6) : ''}</span>
+      </button>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        aria-label="Account menu"
+      >
         <IconChevronDown size={12} />
       </button>
       {open && (

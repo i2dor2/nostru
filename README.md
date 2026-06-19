@@ -2,6 +2,8 @@
 
 Nostr identity. Bitcoin Silent Payments. One key.
 
+> _"Nostru" is the Romanian word for "ours" — your keys, your identity._
+
 A browser sidePanel extension (Chrome MV3) that connects your Nostr identity to the Bitcoin network. Read and write Nostr, zap with one click via NWC, and receive Bitcoin through Silent Payments derived from your existing keypair - all without ever leaving your browser.
 
 ---
