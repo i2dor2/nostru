@@ -299,7 +299,8 @@ def action_scan(req: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(server, str) or not server.startswith('https://'):
         return {'status': 'error', 'error': 'server must be an https:// URL'}
     birthday    = int(req.get('birthday_height', 0))
-    tip         = int(req.get('tip_height', birthday + 1000))
+    tip_raw     = int(req.get('tip_height', 0))
+    tip         = tip_raw if tip_raw > birthday else birthday + 1000
 
     CHUNK = 100
     found = []

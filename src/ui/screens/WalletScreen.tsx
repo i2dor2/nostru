@@ -210,9 +210,9 @@ function SpSection() {
         tipHeight:      tip      ? parseInt(tip, 10)      : 0,
       });
       if (res?.error) { setScanErr(res.error); return; }
-      const data = res?.result as { status: string; utxos: SpUtxo[] };
+      const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
       if (data?.status === 'ok') setUtxos(data.utxos ?? []);
-      else setScanErr('Unexpected response from native host');
+      else setScanErr(data?.error ?? 'Unexpected response from native host');
     } catch (e) {
       setScanErr(e instanceof Error ? e.message : 'Scan failed');
     } finally {
