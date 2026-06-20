@@ -12,3 +12,5 @@ CLAUDE.md
 PROMPT.md
 __pycache__/
 *.pyc
+.playwright-cli/
+docs/reviews/
