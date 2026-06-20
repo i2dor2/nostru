@@ -15,6 +15,7 @@ interface SpRequest {
   destination?: string;
   feeRate?: number;
   paymentMode?: PaymentMode;
+  paymentIndex?: number;
 }
 
 type IncomingMessage = BridgeNip07Request | ApprovalResult | SpRequest;
@@ -317,7 +318,7 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
-    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey, req.paymentIndex);
     return callNativeHost({
       action:          'scan',
       scan_priv:       keys.scanPriv,
@@ -331,7 +332,7 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan_esplora') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
-    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey, req.paymentIndex);
     return callNativeHost({
       action:          'scan_esplora',
       scan_priv:       keys.scanPriv,
@@ -345,7 +346,7 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan_tx') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
-    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey, req.paymentIndex);
     return callNativeHost({
       action:    'scan_tx',
       scan_priv: keys.scanPriv,
@@ -357,7 +358,7 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan_frigate') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
-    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey, req.paymentIndex);
     return callNativeHost({
       action:          'scan_frigate',
       scan_priv:       keys.scanPriv,
@@ -370,7 +371,7 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:sweep') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
-    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey, req.paymentIndex);
     return callNativeHost({
       action:      'sweep',
       spend_priv:  keys.spendPriv,

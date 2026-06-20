@@ -3,9 +3,10 @@
 // in a test environment impractical without a full Chrome API simulator.
 //
 // Coverage strategy:
-//   - Scan key resolution logic -> src/core/sp/scanKeys.test.ts (6 tests)
-//   - Payment key crypto        -> src/core/store/paymentKey.test.ts (8 tests)
+//   - Scan key resolution logic -> src/core/sp/scanKeys.test.ts
+//   - Payment key crypto        -> src/core/store/paymentKey.test.ts
 //   - NSP key derivation        -> src/core/nsp.test.ts
+//   - Identity index store      -> src/core/store/identityIndex.test.ts
 //   - End-to-end message flow   -> manual / extension load testing
 
 import { describe, it } from 'vitest';

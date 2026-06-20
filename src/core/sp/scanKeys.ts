@@ -13,9 +13,10 @@ export async function resolveScanKeys(
   mode: PaymentMode | undefined,
   socialPrivHex: string,
   socialPubkeyHex: string,
+  index = 1,
 ): Promise<ScanKeys> {
   if (mode === 'deterministic') {
-    const payPriv = derivePaymentPriv(socialPrivHex);
+    const payPriv = derivePaymentPriv(socialPrivHex, index);
     return {
       scanPriv:  deriveScanPriv(payPriv),
       spendPub:  deriveSpendPub(privToXonlyPubHex(payPriv)),

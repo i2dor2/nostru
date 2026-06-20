@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   IconWallet, IconUnlink, IconBolt, IconScan, IconCopy, IconCheck,
   IconAlertTriangle, IconLoader2, IconBroadcast, IconChevronDown, IconChevronUp,
-  IconPencil, IconX, IconUpload,
+  IconChevronLeft, IconChevronRight, IconPencil, IconX, IconUpload, IconPlus,
 } from '@tabler/icons-react';
 import { NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk';
 import { useWallet } from '../context/WalletContext';
@@ -13,6 +13,7 @@ import { deriveNspAddress, derivePaymentPriv, privToXonlyPubHex } from '../../co
 import { getCustomSpAddress, setCustomSpAddress } from '../../core/store/customSp';
 import { generatePaymentPriv, savePaymentKey, loadPaymentKey, clearPaymentKey } from '../../core/store/paymentKey';
 import { publishNip352Address } from '../../core/events/nip352';
+import { getIdentityIndex, setIdentityIndex } from '../../core/store/identityIndex';
 import type { PaymentMode } from '../../core/sp/scanKeys';
 
 // ── NWC Wallet ────────────────────────────────────────────────────────────
@@ -186,6 +187,8 @@ function SpSection() {
   const [publishedAt, setPublishedAt] = useState<number | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('social');
   const [indepPrivHex, setIndepPrivHex] = useState<string | null>(null);
+  const [identityIndex, setIdentityIndexState] = useState(1);
+  const [indexLoaded, setIndexLoaded] = useState(false);
 
   const pubkey = session.status === 'unlocked' ? session.account.pubkey : '';
   const derivedSpAddress = (() => {
@@ -193,7 +196,7 @@ function SpSection() {
     try {
       if (paymentMode === 'deterministic' && session.status === 'unlocked') {
         const privHex = bytesToHex(session.privkey);
-        return deriveNspAddress(privToXonlyPubHex(derivePaymentPriv(privHex)));
+        return deriveNspAddress(privToXonlyPubHex(derivePaymentPriv(privHex, identityIndex)));
       }
       if (paymentMode === 'independent') {
         return indepPrivHex ? deriveNspAddress(privToXonlyPubHex(indepPrivHex)) : null;
@@ -213,6 +216,12 @@ function SpSection() {
     loadPaymentKey(pubkey, socialPrivHex).then(setIndepPrivHex).catch(() => setIndepPrivHex(null));
   }, [paymentMode, session, pubkey]);
 
+  useEffect(() => {
+    if (paymentMode !== 'deterministic' || session.status !== 'unlocked' || !pubkey) return;
+    setIndexLoaded(false);
+    getIdentityIndex(pubkey).then(n => { setIdentityIndexState(n); setIndexLoaded(true); });
+  }, [paymentMode, session.status, pubkey]);
+
   const saveSpAddr = useCallback(async () => {
     const trimmed = spAddrDraft.trim();
     await setCustomSpAddress(pubkey, trimmed || null);
@@ -227,7 +236,7 @@ function SpSection() {
     try {
       let paymentPubkeyHex: string | undefined;
       if (paymentMode === 'deterministic') {
-        paymentPubkeyHex = privToXonlyPubHex(derivePaymentPriv(bytesToHex(session.privkey)));
+        paymentPubkeyHex = privToXonlyPubHex(derivePaymentPriv(bytesToHex(session.privkey), identityIndex));
       } else if (paymentMode === 'independent' && indepPrivHex) {
         paymentPubkeyHex = privToXonlyPubHex(indepPrivHex);
       }
@@ -238,7 +247,7 @@ function SpSection() {
     } finally {
       setPublishing(false);
     }
-  }, [ndk, displaySpAddress, session, paymentMode, indepPrivHex]);
+  }, [ndk, displaySpAddress, session, paymentMode, indepPrivHex, identityIndex]);
 
   const handleGenerateKey = useCallback(async () => {
     if (session.status !== 'unlocked') return;
@@ -253,6 +262,34 @@ function SpSection() {
     setIndepPrivHex(null);
     setPublishedAt(null);
   }, [pubkey]);
+
+  const handleStepIndex = useCallback(async (delta: number) => {
+    const next = Math.max(1, identityIndex + delta);
+    setIdentityIndexState(next);
+    await setIdentityIndex(pubkey, next);
+    setPublishedAt(null);
+  }, [identityIndex, pubkey]);
+
+  const handleNewIdentity = useCallback(async () => {
+    if (!ndk || session.status !== 'unlocked') return;
+    const next = identityIndex + 1;
+    setIdentityIndexState(next);
+    await setIdentityIndex(pubkey, next);
+    setPublishedAt(null);
+    setPublishErr('');
+    setPublishing(true);
+    try {
+      const privHex = bytesToHex(session.privkey);
+      const payPriv = derivePaymentPriv(privHex, next);
+      const addr = deriveNspAddress(privToXonlyPubHex(payPriv));
+      await publishNip352Address(ndk, addr, 'mainnet', privToXonlyPubHex(payPriv));
+      setPublishedAt(Math.floor(Date.now() / 1000));
+    } catch (e) {
+      setPublishErr(e instanceof Error ? e.message : 'Publish failed');
+    } finally {
+      setPublishing(false);
+    }
+  }, [ndk, session, identityIndex, pubkey]);
 
   const extensionId = chrome.runtime.id;
   const installCmd = `python3 install.py --extension-id=${extensionId}`;
@@ -279,6 +316,7 @@ function SpSection() {
         birthdayHeight: birthday ? parseInt(birthday, 10) : 0,
         tipHeight:      tip      ? parseInt(tip, 10)      : 0,
         paymentMode,
+        paymentIndex:  identityIndex,
       });
       if (res?.error) { setScanErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
@@ -289,7 +327,7 @@ function SpSection() {
     } finally {
       setScanning(false);
     }
-  }, [server, birthday, tip]);
+  }, [server, birthday, tip, paymentMode, identityIndex]);
 
   const handleScanTx = useCallback(async () => {
     setScanTxErr('');
@@ -297,7 +335,7 @@ function SpSection() {
     setSweepResult(null);
     setScanningTx(true);
     try {
-      const res = await sendToBackground({ type: 'sp:scan_tx', txid: txid.trim(), paymentMode });
+      const res = await sendToBackground({ type: 'sp:scan_tx', txid: txid.trim(), paymentMode, paymentIndex: identityIndex });
       if (res?.error) { setScanTxErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
       if (data?.status === 'ok') setUtxos(data.utxos ?? []);
@@ -307,7 +345,7 @@ function SpSection() {
     } finally {
       setScanningTx(false);
     }
-  }, [txid]);
+  }, [txid, paymentMode, identityIndex]);
 
   const handleScanEsplora = useCallback(async () => {
     setScanEsploraErr('');
@@ -321,6 +359,7 @@ function SpSection() {
         birthdayHeight: birthday ? parseInt(birthday, 10) : 0,
         tipHeight:      tip      ? parseInt(tip, 10)      : 0,
         paymentMode,
+        paymentIndex:  identityIndex,
       });
       if (res?.error) { setScanEsploraErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
@@ -331,7 +370,7 @@ function SpSection() {
     } finally {
       setScanningEsplora(false);
     }
-  }, [explorer, birthday, tip]);
+  }, [explorer, birthday, tip, paymentMode, identityIndex]);
 
   const handleScanFrigate = useCallback(async () => {
     setScanFrigateErr('');
@@ -344,6 +383,7 @@ function SpSection() {
         frigateServer:  frigateServer.trim(),
         birthdayHeight: birthday ? parseInt(birthday, 10) : 0,
         paymentMode,
+        paymentIndex:  identityIndex,
       });
       if (res?.error) { setScanFrigateErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
@@ -354,7 +394,7 @@ function SpSection() {
     } finally {
       setScanningFrigate(false);
     }
-  }, [frigateServer, birthday]);
+  }, [frigateServer, birthday, paymentMode, identityIndex]);
 
   const handleDiscover = useCallback(async () => {
     if (!ndk || session.status !== 'unlocked') return;
@@ -400,10 +440,12 @@ function SpSection() {
     setSweeping(true);
     try {
       const res = await sendToBackground({
-        type:        'sp:sweep',
+        type:         'sp:sweep',
         utxos,
-        destination: dest.trim(),
-        feeRate:     parseInt(feeRate, 10) || 5,
+        destination:  dest.trim(),
+        feeRate:      parseInt(feeRate, 10) || 5,
+        paymentMode,
+        paymentIndex: identityIndex,
       });
       if (res?.error) { setSweepErr(res.error); return; }
       const data = res?.result as { status: string; raw_tx: string; fee_sats: number; amount_sats: number };
@@ -417,7 +459,7 @@ function SpSection() {
     } finally {
       setSweeping(false);
     }
-  }, [utxos, dest, feeRate]);
+  }, [utxos, dest, feeRate, paymentMode, identityIndex]);
 
   const handleBroadcast = useCallback(async () => {
     if (!sweepResult) return;
@@ -518,6 +560,34 @@ function SpSection() {
                 </button>
               ))}
             </div>
+            {paymentMode === 'deterministic' && (
+              <div className="flex items-center gap-2 px-1 flex-wrap">
+                <button
+                  onClick={() => void handleStepIndex(-1)}
+                  disabled={!indexLoaded || identityIndex <= 1}
+                  className="p-0.5 rounded text-zinc-400 hover:text-accent disabled:opacity-30 transition-colors"
+                  title="Previous identity"
+                >
+                  <IconChevronLeft size={14} />
+                </button>
+                <span className="text-xs font-mono text-zinc-600 dark:text-zinc-300 w-4 text-center">{identityIndex}</span>
+                <button
+                  onClick={() => void handleStepIndex(1)}
+                  disabled={!indexLoaded}
+                  className="p-0.5 rounded text-zinc-400 hover:text-accent disabled:opacity-30 transition-colors"
+                  title="Next identity"
+                >
+                  <IconChevronRight size={14} />
+                </button>
+                <button
+                  onClick={() => void handleNewIdentity()}
+                  disabled={!indexLoaded || publishing || !ndk || session.status !== 'unlocked'}
+                  className="flex items-center gap-1 text-xs text-accent hover:underline disabled:opacity-40 ml-1"
+                >
+                  <IconPlus size={10} />New identity
+                </button>
+              </div>
+            )}
             {paymentMode === 'independent' && (
               <div className="px-1">
                 {indepPrivHex ? (

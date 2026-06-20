@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
-import { deriveNspAddress, deriveScanPriv, deriveSpendPriv, deriveSpendPub } from './nsp';
+import { deriveNspAddress, deriveScanPriv, deriveSpendPriv, deriveSpendPub, derivePaymentPriv } from './nsp';
 
 // x-only pubkeys (32-byte hex, BIP-340 / Nostr style)
 // PRIV_1 = scalar 1 => public key is G (even Y, so 02 prefix applies)
@@ -94,5 +94,36 @@ describe('deriveSpendPub', () => {
     // We verify indirectly: addresses computed from same pubkey encode spend_pub consistently.
     const addrForSamePub = deriveNspAddress(PUB_G);
     expect(addrForSamePub).toBe(addr); // deterministic, encodes same spend_pub
+  });
+});
+
+describe('derivePaymentPriv', () => {
+  // Golden pin: this hex must never change - it is the deterministic payment identity
+  // that existing users already have published. Any change would lose access to funds.
+  const GOLDEN_V1_P1 = 'dd67541daaa7ef924d78c6f0b9fb6d91acaba00678a25dd9598ccfe1d32c7242';
+
+  it('backward-compat: index 1 produces the golden pre-parametrization value', () => {
+    expect(derivePaymentPriv(PRIV_1, 1)).toBe(GOLDEN_V1_P1);
+  });
+
+  it('default param (no index) equals index 1', () => {
+    expect(derivePaymentPriv(PRIV_1)).toBe(derivePaymentPriv(PRIV_1, 1));
+  });
+
+  it('index 2 is distinct from index 1 (domain separation)', () => {
+    expect(derivePaymentPriv(PRIV_1, 2)).not.toBe(derivePaymentPriv(PRIV_1, 1));
+  });
+
+  it('same index is deterministic across calls', () => {
+    expect(derivePaymentPriv(PRIV_1, 2)).toBe(derivePaymentPriv(PRIV_1, 2));
+  });
+
+  it('returns a valid 64-char hex scalar', () => {
+    expect(derivePaymentPriv(PRIV_1, 1)).toMatch(/^[0-9a-f]{64}$/);
+    expect(derivePaymentPriv(PRIV_1, 2)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('differs across accounts at same index', () => {
+    expect(derivePaymentPriv(PRIV_1, 1)).not.toBe(derivePaymentPriv(PRIV_2, 1));
   });
 });

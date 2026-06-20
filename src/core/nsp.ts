@@ -59,8 +59,8 @@ export function deriveSpendPriv(privkeyHex: string): string {
   return derivePrivOffset(privkeyHex, 'nostr-sp/spend').toString(16).padStart(64, '0');
 }
 
-export function derivePaymentPriv(privkeyHex: string): string {
-  return derivePrivOffset(privkeyHex, 'nostr-payment/v1').toString(16).padStart(64, '0');
+export function derivePaymentPriv(privkeyHex: string, index = 1): string {
+  return derivePrivOffset(privkeyHex, `nostr-payment/v${index}`).toString(16).padStart(64, '0');
 }
 
 export function privToXonlyPubHex(privkeyHex: string): string {

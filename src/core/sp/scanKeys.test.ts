@@ -40,6 +40,26 @@ describe('resolveScanKeys - deterministic', () => {
     const det    = await resolveScanKeys('deterministic', SOCIAL_PRIV, SOCIAL_PUB);
     expect(det.scanPriv).not.toBe(social.scanPriv);
   });
+
+  it('default (no index) equals index 1', async () => {
+    const def = await resolveScanKeys('deterministic', SOCIAL_PRIV, SOCIAL_PUB);
+    const i1  = await resolveScanKeys('deterministic', SOCIAL_PRIV, SOCIAL_PUB, 1);
+    expect(def.scanPriv).toBe(i1.scanPriv);
+    expect(def.spendPub).toBe(i1.spendPub);
+  });
+
+  it('index 2 produces different keys than index 1', async () => {
+    const i1 = await resolveScanKeys('deterministic', SOCIAL_PRIV, SOCIAL_PUB, 1);
+    const i2 = await resolveScanKeys('deterministic', SOCIAL_PRIV, SOCIAL_PUB, 2);
+    expect(i2.scanPriv).not.toBe(i1.scanPriv);
+    expect(i2.spendPub).not.toBe(i1.spendPub);
+  });
+
+  it('index is ignored in social mode', async () => {
+    const s1 = await resolveScanKeys('social', SOCIAL_PRIV, SOCIAL_PUB, 1);
+    const s2 = await resolveScanKeys('social', SOCIAL_PRIV, SOCIAL_PUB, 2);
+    expect(s1.scanPriv).toBe(s2.scanPriv);
+  });
 });
 
 describe('resolveScanKeys - independent', () => {
