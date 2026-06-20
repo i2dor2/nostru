@@ -1,10 +1,52 @@
 import { useState } from 'react';
-import { IconKey, IconPlus, IconDownload, IconEye, IconEyeOff } from '@tabler/icons-react';
+import { IconKey, IconPlus, IconDownload, IconEye, IconEyeOff, IconMessage2, IconBolt, IconAt } from '@tabler/icons-react';
 import { useAccount } from '../context/AccountContext';
 import { encodePubkey, generateKeypair, encodePrivkey } from '../../core/keys';
 
+type Step = 'welcome' | 'setup';
 type Tab = 'create' | 'import';
 type CreateStep = 'preview' | 'password';
+
+const FEATURES = [
+  { icon: IconAt, text: 'Claim your own name@nostru.net identity' },
+  { icon: IconMessage2, text: 'Post, follow people, reply - no algorithms' },
+  { icon: IconBolt, text: 'Zap anyone with Bitcoin, instantly' },
+  { icon: IconKey, text: 'Your key, your account - no one can take it away' },
+] as const;
+
+function WelcomeStep({ onContinue }: { onContinue: () => void }) {
+  return (
+    <div className="flex flex-col h-full items-center justify-center px-6 py-8">
+      <div className="w-full max-w-sm space-y-8">
+        <div className="text-center space-y-2">
+          <div className="text-3xl font-bold tracking-tight text-accent">Nostru</div>
+          <p className="text-sm text-zinc-500 leading-relaxed">
+            A Nostr client where you own your identity.<br />
+            No server can ban you. No company can delete you.
+          </p>
+        </div>
+
+        <ul className="space-y-3">
+          {FEATURES.map(({ icon: Icon, text }) => (
+            <li key={text} className="flex items-start gap-3">
+              <span className="mt-0.5 shrink-0 w-7 h-7 rounded-lg bg-accent/10 flex items-center justify-center">
+                <Icon size={15} className="text-accent" />
+              </span>
+              <span className="text-sm text-zinc-600 dark:text-zinc-300 leading-snug">{text}</span>
+            </li>
+          ))}
+        </ul>
+
+        <button
+          onClick={onContinue}
+          className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
+        >
+          Get started
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function PasswordInput({
   label,
@@ -167,7 +209,7 @@ function ImportTab() {
   );
 }
 
-export function OnboardingScreen() {
+function SetupStep() {
   const [tab, setTab] = useState<Tab>('create');
 
   return (
@@ -177,8 +219,8 @@ export function OnboardingScreen() {
           <div className="flex justify-center">
             <IconKey size={32} className="text-accent" />
           </div>
-          <h1 className="text-lg font-medium">Welcome to Nostru</h1>
-          <p className="text-xs text-zinc-500">Set up your Nostr identity to get started</p>
+          <h1 className="text-lg font-medium">Set up your identity</h1>
+          <p className="text-xs text-zinc-500">Create a new key or import an existing one</p>
         </div>
         <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-700 p-0.5 gap-0.5">
           <button
@@ -202,4 +244,11 @@ export function OnboardingScreen() {
       </div>
     </div>
   );
+}
+
+export function OnboardingScreen() {
+  const [step, setStep] = useState<Step>('welcome');
+
+  if (step === 'welcome') return <WelcomeStep onContinue={() => setStep('setup')} />;
+  return <SetupStep />;
 }
