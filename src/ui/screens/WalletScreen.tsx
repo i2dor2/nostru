@@ -11,7 +11,9 @@ import { useAccount } from '../context/AccountContext';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { deriveNspAddress, derivePaymentPriv, privToXonlyPubHex } from '../../core/nsp';
 import { getCustomSpAddress, setCustomSpAddress } from '../../core/store/customSp';
+import { generatePaymentPriv, savePaymentKey, loadPaymentKey, clearPaymentKey } from '../../core/store/paymentKey';
 import { publishNip352Address } from '../../core/events/nip352';
+import type { PaymentMode } from '../../core/sp/scanKeys';
 
 // ── NWC Wallet ────────────────────────────────────────────────────────────
 
@@ -182,16 +184,19 @@ function SpSection() {
   const [publishing, setPublishing] = useState(false);
   const [publishErr, setPublishErr] = useState('');
   const [publishedAt, setPublishedAt] = useState<number | null>(null);
-  const [useDetKey, setUseDetKey] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('social');
+  const [indepPrivHex, setIndepPrivHex] = useState<string | null>(null);
 
   const pubkey = session.status === 'unlocked' ? session.account.pubkey : '';
   const derivedSpAddress = (() => {
     if (!pubkey) return null;
     try {
-      if (useDetKey && session.status === 'unlocked') {
+      if (paymentMode === 'deterministic' && session.status === 'unlocked') {
         const privHex = bytesToHex(session.privkey);
-        const paymentPriv = derivePaymentPriv(privHex);
-        return deriveNspAddress(privToXonlyPubHex(paymentPriv));
+        return deriveNspAddress(privToXonlyPubHex(derivePaymentPriv(privHex)));
+      }
+      if (paymentMode === 'independent') {
+        return indepPrivHex ? deriveNspAddress(privToXonlyPubHex(indepPrivHex)) : null;
       }
       return deriveNspAddress(pubkey);
     } catch { return null; }
@@ -201,6 +206,12 @@ function SpSection() {
   useEffect(() => {
     if (pubkey) getCustomSpAddress(pubkey).then(setCustomSpAddressState);
   }, [pubkey]);
+
+  useEffect(() => {
+    if (paymentMode !== 'independent' || session.status !== 'unlocked') { setIndepPrivHex(null); return; }
+    const socialPrivHex = bytesToHex(session.privkey);
+    loadPaymentKey(pubkey, socialPrivHex).then(setIndepPrivHex).catch(() => setIndepPrivHex(null));
+  }, [paymentMode, session, pubkey]);
 
   const saveSpAddr = useCallback(async () => {
     const trimmed = spAddrDraft.trim();
@@ -215,9 +226,10 @@ function SpSection() {
     setPublishing(true);
     try {
       let paymentPubkeyHex: string | undefined;
-      if (useDetKey) {
-        const privHex = bytesToHex(session.privkey);
-        paymentPubkeyHex = privToXonlyPubHex(derivePaymentPriv(privHex));
+      if (paymentMode === 'deterministic') {
+        paymentPubkeyHex = privToXonlyPubHex(derivePaymentPriv(bytesToHex(session.privkey)));
+      } else if (paymentMode === 'independent' && indepPrivHex) {
+        paymentPubkeyHex = privToXonlyPubHex(indepPrivHex);
       }
       await publishNip352Address(ndk, displaySpAddress, 'mainnet', paymentPubkeyHex);
       setPublishedAt(Math.floor(Date.now() / 1000));
@@ -226,7 +238,21 @@ function SpSection() {
     } finally {
       setPublishing(false);
     }
-  }, [ndk, displaySpAddress, session, useDetKey]);
+  }, [ndk, displaySpAddress, session, paymentMode, indepPrivHex]);
+
+  const handleGenerateKey = useCallback(async () => {
+    if (session.status !== 'unlocked') return;
+    const privHex = generatePaymentPriv();
+    await savePaymentKey(pubkey, privHex, bytesToHex(session.privkey));
+    setIndepPrivHex(privHex);
+    setPublishedAt(null);
+  }, [session, pubkey]);
+
+  const handleRevokeKey = useCallback(async () => {
+    await clearPaymentKey(pubkey);
+    setIndepPrivHex(null);
+    setPublishedAt(null);
+  }, [pubkey]);
 
   const extensionId = chrome.runtime.id;
   const installCmd = `python3 install.py --extension-id=${extensionId}`;
@@ -252,6 +278,7 @@ function SpSection() {
         server,
         birthdayHeight: birthday ? parseInt(birthday, 10) : 0,
         tipHeight:      tip      ? parseInt(tip, 10)      : 0,
+        paymentMode,
       });
       if (res?.error) { setScanErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
@@ -270,7 +297,7 @@ function SpSection() {
     setSweepResult(null);
     setScanningTx(true);
     try {
-      const res = await sendToBackground({ type: 'sp:scan_tx', txid: txid.trim() });
+      const res = await sendToBackground({ type: 'sp:scan_tx', txid: txid.trim(), paymentMode });
       if (res?.error) { setScanTxErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
       if (data?.status === 'ok') setUtxos(data.utxos ?? []);
@@ -293,6 +320,7 @@ function SpSection() {
         explorer:       explorer.trim() || 'https://mempool.space',
         birthdayHeight: birthday ? parseInt(birthday, 10) : 0,
         tipHeight:      tip      ? parseInt(tip, 10)      : 0,
+        paymentMode,
       });
       if (res?.error) { setScanEsploraErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
@@ -315,6 +343,7 @@ function SpSection() {
         type:           'sp:scan_frigate',
         frigateServer:  frigateServer.trim(),
         birthdayHeight: birthday ? parseInt(birthday, 10) : 0,
+        paymentMode,
       });
       if (res?.error) { setScanFrigateErr(res.error); return; }
       const data = res?.result as { status: string; utxos?: SpUtxo[]; error?: string };
@@ -480,16 +509,30 @@ function SpSection() {
               )}
               {publishErr && <span className="text-xs text-red-500">{publishErr}</span>}
             </div>
-            <div className="flex items-center gap-2 px-1">
-              <span className="text-xs text-zinc-400">Payment identity:</span>
-              <button
-                onClick={() => { setUseDetKey(v => !v); setPublishedAt(null); }}
-                className="text-xs text-zinc-500 hover:text-accent transition-colors"
-                title={useDetKey ? 'Switch to Social (NSP) - address derived from npub' : 'Switch to Deterministic - separate payment key, same nsec'}
-              >
-                {useDetKey ? 'Deterministic' : 'Social (NSP)'}
-              </button>
+            <div className="flex items-center gap-1.5 px-1 flex-wrap">
+              <span className="text-xs text-zinc-400">Identity:</span>
+              {(['social', 'deterministic', 'independent'] as const).map(m => (
+                <button key={m} onClick={() => { setPaymentMode(m); setPublishedAt(null); }}
+                  className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${paymentMode === m ? 'border-accent text-accent bg-accent/10' : 'border-zinc-300 dark:border-zinc-600 text-zinc-500 hover:text-accent'}`}>
+                  {m === 'social' ? 'Social' : m === 'deterministic' ? 'Det.' : 'Indep.'}
+                </button>
+              ))}
             </div>
+            {paymentMode === 'independent' && (
+              <div className="px-1">
+                {indepPrivHex ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-zinc-500">{privToXonlyPubHex(indepPrivHex).slice(0, 16)}...</span>
+                    <button onClick={() => void handleRevokeKey()} className="text-xs text-red-400 hover:text-red-500">Revoke</button>
+                  </div>
+                ) : (
+                  <button onClick={() => void handleGenerateKey()} disabled={session.status !== 'unlocked'}
+                    className="text-xs text-accent hover:underline disabled:opacity-40">
+                    Generate payment keypair
+                  </button>
+                )}
+              </div>
+            )}
             </div>
           )}
           {editingSpAddr && (

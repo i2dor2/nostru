@@ -1,7 +1,7 @@
 import { executeNip07 } from '../src/core/nip07/execute';
 import { getPermission } from '../src/core/store/permissions';
 import type { NIP07Method, ApprovalResult, PendingApproval, BridgeNip07Request } from '../src/core/nip07/types';
-import { deriveScanPriv, deriveSpendPriv, deriveSpendPub } from '../src/core/nsp';
+import { resolveScanKeys, type PaymentMode } from '../src/core/sp/scanKeys';
 
 interface SpRequest {
   type: 'sp:identify' | 'sp:scan' | 'sp:scan_tx' | 'sp:scan_esplora' | 'sp:scan_frigate' | 'sp:sweep';
@@ -14,6 +14,7 @@ interface SpRequest {
   utxos?: unknown[];
   destination?: string;
   feeRate?: number;
+  paymentMode?: PaymentMode;
 }
 
 type IncomingMessage = BridgeNip07Request | ApprovalResult | SpRequest;
@@ -309,10 +310,11 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
     return callNativeHost({
       action:          'scan',
-      scan_priv:       deriveScanPriv(privHex),
-      spend_pub:       deriveSpendPub(pubkey),
+      scan_priv:       keys.scanPriv,
+      spend_pub:       keys.spendPub,
       server:          req.server ?? 'https://silentpayments.xyz/api',
       birthday_height: req.birthdayHeight ?? 0,
       tip_height:      req.tipHeight ?? 0,
@@ -322,10 +324,11 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan_esplora') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
     return callNativeHost({
       action:          'scan_esplora',
-      scan_priv:       deriveScanPriv(privHex),
-      spend_pub:       deriveSpendPub(pubkey),
+      scan_priv:       keys.scanPriv,
+      spend_pub:       keys.spendPub,
       birthday_height: req.birthdayHeight ?? 0,
       tip_height:      req.tipHeight ?? 0,
       explorer:        req.explorer ?? 'https://mempool.space',
@@ -335,10 +338,11 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan_tx') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
     return callNativeHost({
       action:    'scan_tx',
-      scan_priv: deriveScanPriv(privHex),
-      spend_pub: deriveSpendPub(pubkey),
+      scan_priv: keys.scanPriv,
+      spend_pub: keys.spendPub,
       txid:      req.txid ?? '',
     });
   }
@@ -346,19 +350,23 @@ async function handleSpRequest(req: SpRequest): Promise<unknown> {
   if (req.type === 'sp:scan_frigate') {
     const pubkey = await getActivePubkey();
     if (!pubkey) throw new Error('No active account');
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
     return callNativeHost({
       action:          'scan_frigate',
-      scan_priv:       deriveScanPriv(privHex),
-      spend_pub:       deriveSpendPub(pubkey),
+      scan_priv:       keys.scanPriv,
+      spend_pub:       keys.spendPub,
       birthday_height: req.birthdayHeight ?? 0,
       server:          req.frigateServer ?? '',
     });
   }
 
   if (req.type === 'sp:sweep') {
+    const pubkey = await getActivePubkey();
+    if (!pubkey) throw new Error('No active account');
+    const keys = await resolveScanKeys(req.paymentMode, privHex, pubkey);
     return callNativeHost({
       action:      'sweep',
-      spend_priv:  deriveSpendPriv(privHex),
+      spend_priv:  keys.spendPriv,
       utxos:       req.utxos ?? [],
       destination: req.destination ?? '',
       fee_rate:    req.feeRate ?? 10,
