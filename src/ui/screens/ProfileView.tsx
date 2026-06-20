@@ -26,6 +26,7 @@ import { follow, unfollow } from '../../core/events/follows';
 import { publishProfile } from '../../core/events/publish';
 import { NoteCard } from '../components/NoteCard';
 import { ZapModal } from '../components/ZapModal';
+import { nip19 } from 'nostr-tools';
 import { encodePubkey, truncateNpub } from '../../core/keys';
 import { useAccount } from '../context/AccountContext';
 import { useNav } from '../context/NavContext';
@@ -153,6 +154,33 @@ function NspRow({ pubkey, overrideAddress }: { pubkey: string; overrideAddress?:
         className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0"
       >
         {copied ? <IconCheck size={12} className="text-green-500" /> : <IconCopy size={12} />}
+      </button>
+    </div>
+  );
+}
+
+function CopyNpubRow({ pubkey }: { pubkey: string }) {
+  const [copied, setCopied] = useState<'npub' | 'nprofile' | null>(null);
+  const fullNpub = encodePubkey(pubkey);
+
+  const copy = (type: 'npub' | 'nprofile') => {
+    const text = type === 'npub'
+      ? fullNpub
+      : nip19.nprofileEncode({ pubkey, relays: ['wss://relay.damus.io', 'wss://nos.lol'] });
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(type);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 mt-0.5">
+      <p className="text-xs text-zinc-400 font-mono">{truncateNpub(fullNpub)}</p>
+      <button onClick={() => copy('npub')} title="Copy npub" className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0">
+        {copied === 'npub' ? <IconCheck size={11} className="text-green-500" /> : <IconCopy size={11} />}
+      </button>
+      <button onClick={() => copy('nprofile')} title="Copy as nprofile" className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0 text-[10px] font-mono leading-none">
+        {copied === 'nprofile' ? <IconCheck size={11} className="text-green-500" /> : 'nprofile'}
       </button>
     </div>
   );
@@ -579,7 +607,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
                   <IconRosetteDiscountCheckFilled size={14} className="text-accent shrink-0" aria-label="NIP-05 verified" />
                 )}
               </div>
-              <p className="text-xs text-zinc-400 font-mono mt-0.5">{npub}</p>
+              <CopyNpubRow pubkey={pubkey} />
               {profile?.nip05 && (
                 <p className="text-xs text-zinc-400 mt-0.5">{profile.nip05}</p>
               )}
