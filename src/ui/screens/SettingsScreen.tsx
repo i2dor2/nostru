@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { IconPlus, IconTrash, IconRefresh, IconSun, IconMoon, IconX, IconEyeOff, IconShieldOff } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconRefresh, IconSun, IconMoon, IconX, IconEyeOff, IconShieldOff, IconShieldCheck } from '@tabler/icons-react';
 import { useNDK } from '../../core/ndk';
 import { DEFAULT_RELAYS } from '../../core/ndk/config';
 import { getSavedRelays, saveRelays, type RelayConfig } from '../../core/store/relays';
@@ -15,6 +15,17 @@ interface RelayStatus {
   url: string;
   connected: boolean;
   connecting: boolean;
+  authenticated: boolean;
+}
+
+// NDKRelayStatus: 0=CONNECTING 1=CONNECTED 2=DISCONNECTED 3=RECONNECTING
+// 4=FLAPPING 5=DISCONNECTING 6=AUTH_REQUESTED 7=AUTHENTICATING 8=AUTHENTICATED
+export function relayStatusFlags(status: number): { connected: boolean; connecting: boolean; authenticated: boolean } {
+  return {
+    connected:     status === 1 || status === 8,
+    connecting:    status === 0 || status === 3 || status === 4 || status === 6 || status === 7,
+    authenticated: status === 8,
+  };
 }
 
 function normalizeUrl(url: string): string {
@@ -25,7 +36,8 @@ function normalizeUrl(url: string): string {
   }
 }
 
-function StatusDot({ connected, connecting }: { connected: boolean; connecting: boolean }) {
+function StatusDot({ connected, connecting, authenticated }: { connected: boolean; connecting: boolean; authenticated: boolean }) {
+  if (authenticated) return <IconShieldCheck size={12} className="text-green-500 shrink-0" />;
   if (connected) return <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />;
   if (connecting) return <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />;
   return <span className="w-2 h-2 rounded-full bg-zinc-300 dark:bg-zinc-600 shrink-0" />;
@@ -109,11 +121,7 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
         const normalized = normalizeUrl(url);
         const relay = ndk.pool.relays.get(normalized);
         const status = relay?.status ?? -1;
-        map.set(url, {
-          url,
-          connected: status === 1,
-          connecting: status === 0 || status === 4,
-        });
+        map.set(url, { url, ...relayStatusFlags(status) });
       }
       setRelayStatuses(map);
     };
@@ -268,6 +276,7 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
                 <StatusDot
                   connected={entry?.connected ?? false}
                   connecting={entry?.connecting ?? false}
+                  authenticated={entry?.authenticated ?? false}
                 />
                 <span className="flex-1 text-xs font-mono text-zinc-600 dark:text-zinc-400 truncate">{url}</span>
                 <RwToggle active={read} label="R" onClick={() => void handleToggleRead(url)} />
