@@ -266,8 +266,12 @@ function SpSection() {
   const handleStepIndex = useCallback(async (delta: number) => {
     const next = Math.max(1, identityIndex + delta);
     setIdentityIndexState(next);
-    await setIdentityIndex(pubkey, next);
-    setPublishedAt(null);
+    try {
+      await setIdentityIndex(pubkey, next);
+      setPublishedAt(null);
+    } catch {
+      setIdentityIndexState(identityIndex);
+    }
   }, [identityIndex, pubkey]);
 
   const handleNewIdentity = useCallback(async () => {
