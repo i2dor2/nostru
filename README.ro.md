@@ -157,6 +157,12 @@ Ideea de a mapa identitati Nostr la adrese Bitcoin Silent Payment a fost articul
 
 ---
 
+## Standarde propuse
+
+- [NIP-352](docs/nip-352.md) — *Bitcoin Silent Payment Address* — un event Nostr replaceable (kind:10352) care publică o adresă BIP-352 Silent Payment descoperibilă prin identitatea socială, fără a lega criptografic adresa de plată de perechea de chei sociale. Permite rotația adresei și separarea identității de plată de identitatea Nostr.
+
+---
+
 ## Arhitectura
 
 ```

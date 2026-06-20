@@ -157,6 +157,12 @@ Die Idee, Nostr-Identitaeten auf Bitcoin-Silent-Payment-Adressen abzubilden, wur
 
 ---
 
+## Vorgeschlagene Standards
+
+- [NIP-352](docs/nip-352.md) — *Bitcoin Silent Payment Address* — ein ersetzbares Nostr-Event (kind:10352), das eine BIP-352-Silent-Payment-Adresse veroffentlicht, die uber die soziale Identitat auffindbar ist, ohne die Zahlungsadresse kryptografisch an das soziale Schluesselpaar zu binden. Ermoeglicht Adressrotation und Trennung von Zahlungsidentitaet und Nostr-Identitaet.
+
+---
+
 ## Architektur
 
 ```
