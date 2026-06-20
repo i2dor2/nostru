@@ -166,6 +166,85 @@ interface EditState {
   lud16: string;
   picture: string;
   banner: string;
+  nip05: string;
+}
+
+const NOSTRU_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,28}[a-z0-9]$|^[a-z0-9]$/;
+
+function Nip05ClaimWidget({ pubkey, onClaim }: { pubkey: string; onClaim: (identifier: string) => void }) {
+  const [name, setName] = useState('');
+  const [avail, setAvail] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [claiming, setClaiming] = useState(false);
+  const [claimErr, setClaimErr] = useState('');
+  const [claimed, setClaimed] = useState(false);
+
+  useEffect(() => {
+    if (!name) { setAvail('idle'); return; }
+    if (!NOSTRU_NAME_RE.test(name)) { setAvail('invalid'); return; }
+    setAvail('checking');
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://nostru.net/check?name=${encodeURIComponent(name)}`);
+        const d = await r.json() as { available: boolean };
+        setAvail(d.available ? 'available' : 'taken');
+      } catch { setAvail('idle'); }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [name]);
+
+  const handleClaim = async () => {
+    if (claiming || avail !== 'available') return;
+    setClaiming(true);
+    setClaimErr('');
+    try {
+      const r = await fetch('https://nostru.net/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, pubkey }),
+      });
+      const d = await r.json() as { ok?: boolean; error?: string };
+      if (r.ok) {
+        setClaimed(true);
+        onClaim(`${name}@nostru.net`);
+      } else {
+        setClaimErr(d.error ?? 'Claim failed');
+      }
+    } catch { setClaimErr('Network error'); }
+    finally { setClaiming(false); }
+  };
+
+  if (claimed) return (
+    <p className="text-xs text-green-500 mt-1.5 flex items-center gap-1">
+      <IconCheck size={11} /> {name}@nostru.net claimed - save profile to publish
+    </p>
+  );
+
+  return (
+    <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+      <p className="text-xs text-zinc-400 mb-1.5">Claim a free name@nostru.net</p>
+      <div className="flex gap-1.5 items-center">
+        <input
+          value={name}
+          onChange={e => setName(e.target.value.toLowerCase())}
+          placeholder="yourname"
+          maxLength={30}
+          className="flex-1 min-w-0 px-2 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-transparent focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+        />
+        <span className="text-xs text-zinc-400 shrink-0">@nostru.net</span>
+        <button
+          onClick={() => void handleClaim()}
+          disabled={avail !== 'available' || claiming}
+          className="px-3 py-1.5 text-xs font-medium rounded bg-accent text-white disabled:opacity-40 transition-colors shrink-0"
+        >
+          {claiming ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> : 'Claim'}
+        </button>
+      </div>
+      {avail === 'available' && <p className="text-xs text-green-500 mt-1">{name}@nostru.net is available</p>}
+      {avail === 'taken'     && <p className="text-xs text-red-400 mt-1">{name}@nostru.net is taken or reserved</p>}
+      {avail === 'invalid'   && <p className="text-xs text-zinc-400 mt-1">Only a-z, 0-9, hyphens, underscores</p>}
+      {claimErr              && <p className="text-xs text-red-400 mt-1">{claimErr}</p>}
+    </div>
+  );
 }
 
 const EDIT_FIELDS = [
@@ -213,7 +292,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
   }, [isSelf, ndk, pubkey]);
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [editState, setEditState] = useState<EditState>({
-    name: '', displayName: '', about: '', website: '', lud16: '', picture: '', banner: '',
+    name: '', displayName: '', about: '', website: '', lud16: '', picture: '', banner: '', nip05: '',
   });
 
   const TABS: { id: ProfileTab; label: string }[] = [
@@ -238,6 +317,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
       lud16: profile?.lud16 ?? '',
       picture: profile?.picture ?? '',
       banner: profile?.banner ?? '',
+      nip05: profile?.nip05 ?? '',
     });
     setEditing(true);
   }, [profile]);
@@ -254,6 +334,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
       if (editState.lud16) meta.lud16 = editState.lud16;
       if (editState.picture) meta.picture = editState.picture;
       if (editState.banner) meta.banner = editState.banner;
+      if (editState.nip05) meta.nip05 = editState.nip05;
       await publishProfile(ndk, meta);
       setEditing(false);
     } catch {
@@ -457,6 +538,19 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
                   />
                 </div>
               ))}
+              <div>
+                <label className="text-xs text-zinc-400 block mb-0.5">NIP-05 identifier</label>
+                <input
+                  value={editState.nip05}
+                  onChange={e => setEditState(prev => ({ ...prev, nip05: e.target.value }))}
+                  placeholder="you@nostru.net"
+                  className="w-full px-2 py-1.5 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-transparent focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                <Nip05ClaimWidget
+                  pubkey={pubkey}
+                  onClaim={identifier => setEditState(prev => ({ ...prev, nip05: identifier }))}
+                />
+              </div>
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => void handleSave()}
