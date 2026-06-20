@@ -12,7 +12,9 @@ import {
   IconPin,
   IconCurrencyBitcoin,
   IconCopy,
+  IconQrcode,
 } from '@tabler/icons-react';
+import QRCode from 'qrcode';
 import { deriveNspAddress } from '../../core/nsp';
 import { getCustomSpAddress } from '../../core/store/customSp';
 import { fetchNip352Address } from '../../core/events/nip352';
@@ -126,8 +128,47 @@ function ZapCard({ event }: { event: NDKEvent }) {
   );
 }
 
+function QrModal({ value, onClose }: { value: string; onClose: () => void }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    QRCode.toDataURL(value, { width: 256, margin: 2, color: { dark: '#18181b', light: '#ffffff' } })
+      .then(setDataUrl)
+      .catch(() => {});
+  }, [value]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-zinc-900 rounded-xl p-5 flex flex-col items-center gap-3 shadow-xl w-64"
+        onClick={e => e.stopPropagation()}
+      >
+        {dataUrl
+          ? <img src={dataUrl} alt="QR code" className="w-48 h-48 rounded" />
+          : <div className="w-48 h-48 flex items-center justify-center">
+              <div className="w-6 h-6 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+            </div>
+        }
+        <p className="text-[10px] text-zinc-400 font-mono break-all text-center leading-relaxed">
+          {value.slice(0, 20)}...{value.slice(-8)}
+        </p>
+        <button
+          onClick={onClose}
+          className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NspRow({ pubkey, overrideAddress }: { pubkey: string; overrideAddress?: string | null }) {
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const address = useMemo(() => {
     if (overrideAddress) return overrideAddress;
     try { return deriveNspAddress(pubkey); } catch { return null; }
@@ -143,19 +184,29 @@ function NspRow({ pubkey, overrideAddress }: { pubkey: string; overrideAddress?:
   };
 
   return (
-    <div className="flex items-center gap-1.5 mt-2">
-      <IconCurrencyBitcoin size={13} className="text-amber-500 shrink-0" />
-      <span className="text-xs font-mono text-zinc-400 truncate flex-1" title={address}>
-        {address.slice(0, 24)}...
-      </span>
-      <button
-        onClick={handleCopy}
-        title="Copy Silent Payment address"
-        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0"
-      >
-        {copied ? <IconCheck size={12} className="text-green-500" /> : <IconCopy size={12} />}
-      </button>
-    </div>
+    <>
+      <div className="flex items-center gap-1.5 mt-2">
+        <IconCurrencyBitcoin size={13} className="text-amber-500 shrink-0" />
+        <span className="text-xs font-mono text-zinc-400 truncate flex-1" title={address}>
+          {address.slice(0, 24)}...
+        </span>
+        <button
+          onClick={() => setQrOpen(true)}
+          title="Show QR code"
+          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0"
+        >
+          <IconQrcode size={12} />
+        </button>
+        <button
+          onClick={handleCopy}
+          title="Copy Silent Payment address"
+          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors shrink-0"
+        >
+          {copied ? <IconCheck size={12} className="text-green-500" /> : <IconCopy size={12} />}
+        </button>
+      </div>
+      {qrOpen && <QrModal value={address} onClose={() => setQrOpen(false)} />}
+    </>
   );
 }
 
