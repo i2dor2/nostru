@@ -15,6 +15,7 @@ import {
 } from '@tabler/icons-react';
 import { deriveNspAddress } from '../../core/nsp';
 import { getCustomSpAddress } from '../../core/store/customSp';
+import { fetchNip352Address } from '../../core/events/nip352';
 import { zapInvoiceFromEvent, type NDKEvent } from '@nostr-dev-kit/ndk';
 import { useNDK } from '../../core/ndk';
 import { useProfile, useFollows, useFeed, useNip05, useBlocks, useMutes } from '../feed/hooks';
@@ -200,10 +201,16 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
   const [saving, setSaving] = useState(false);
   const [zapOpen, setZapOpen] = useState(false);
   const [customSpAddress, setCustomSpAddressState] = useState<string | null>(null);
+  const [nip352Address, setNip352Address] = useState<string | null>(null);
 
   useEffect(() => {
     if (isSelf) getCustomSpAddress(pubkey).then(setCustomSpAddressState);
   }, [isSelf, pubkey]);
+
+  useEffect(() => {
+    if (isSelf || !ndk) return;
+    fetchNip352Address(ndk, pubkey).then(setNip352Address).catch(() => { /* silent */ });
+  }, [isSelf, ndk, pubkey]);
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [editState, setEditState] = useState<EditState>({
     name: '', displayName: '', about: '', website: '', lud16: '',
@@ -513,7 +520,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
                   <span className="text-zinc-400 ml-1">followers</span>
                 </button>
               </div>
-              <NspRow pubkey={pubkey} overrideAddress={isSelf ? customSpAddress : undefined} />
+              <NspRow pubkey={pubkey} overrideAddress={isSelf ? customSpAddress : nip352Address} />
             </div>
           )}
         </div>
