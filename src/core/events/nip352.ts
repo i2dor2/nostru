@@ -1,19 +1,15 @@
-import { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NDKEvent, NDKKind } from '@nostr-dev-kit/ndk';
 import type NDK from '@nostr-dev-kit/ndk';
 
 export async function publishNip352Address(
   ndk: NDK,
   sp1Address: string,
   network: 'mainnet' | 'signet' | 'testnet' = 'mainnet',
+  paymentPubkeyHex?: string,
 ): Promise<void> {
-  const event = new NDKEvent(ndk, {
-    kind: 10352,
-    content: '',
-    tags: [
-      ['d', network],
-      ['sp1', sp1Address],
-    ],
-  });
+  const tags: string[][] = [['d', network], ['sp1', sp1Address]];
+  if (paymentPubkeyHex) tags.push(['payment_pubkey', paymentPubkeyHex]);
+  const event = new NDKEvent(ndk, { kind: 10352 as NDKKind, content: '', tags });
   await event.sign();
   await event.publish();
 }
@@ -24,7 +20,7 @@ export async function fetchNip352Address(
   network: 'mainnet' | 'signet' | 'testnet' = 'mainnet',
 ): Promise<string | null> {
   const events = await ndk.fetchEvents({
-    kinds: [10352],
+    kinds: [10352 as NDKKind],
     authors: [pubkeyHex],
     '#d': [network],
     limit: 5,

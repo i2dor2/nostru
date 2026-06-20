@@ -8,7 +8,8 @@ import { NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk';
 import { useWallet } from '../context/WalletContext';
 import { useNDK } from '../../core/ndk';
 import { useAccount } from '../context/AccountContext';
-import { deriveNspAddress } from '../../core/nsp';
+import { bytesToHex } from '@noble/hashes/utils.js';
+import { deriveNspAddress, derivePaymentPriv, privToXonlyPubHex } from '../../core/nsp';
 import { getCustomSpAddress, setCustomSpAddress } from '../../core/store/customSp';
 import { publishNip352Address } from '../../core/events/nip352';
 
@@ -181,9 +182,20 @@ function SpSection() {
   const [publishing, setPublishing] = useState(false);
   const [publishErr, setPublishErr] = useState('');
   const [publishedAt, setPublishedAt] = useState<number | null>(null);
+  const [useDetKey, setUseDetKey] = useState(false);
 
   const pubkey = session.status === 'unlocked' ? session.account.pubkey : '';
-  const derivedSpAddress = pubkey ? (() => { try { return deriveNspAddress(pubkey); } catch { return null; } })() : null;
+  const derivedSpAddress = (() => {
+    if (!pubkey) return null;
+    try {
+      if (useDetKey && session.status === 'unlocked') {
+        const privHex = bytesToHex(session.privkey);
+        const paymentPriv = derivePaymentPriv(privHex);
+        return deriveNspAddress(privToXonlyPubHex(paymentPriv));
+      }
+      return deriveNspAddress(pubkey);
+    } catch { return null; }
+  })();
   const displaySpAddress = customSpAddress ?? derivedSpAddress;
 
   useEffect(() => {
@@ -202,14 +214,19 @@ function SpSection() {
     setPublishErr('');
     setPublishing(true);
     try {
-      await publishNip352Address(ndk, displaySpAddress);
+      let paymentPubkeyHex: string | undefined;
+      if (useDetKey) {
+        const privHex = bytesToHex(session.privkey);
+        paymentPubkeyHex = privToXonlyPubHex(derivePaymentPriv(privHex));
+      }
+      await publishNip352Address(ndk, displaySpAddress, 'mainnet', paymentPubkeyHex);
       setPublishedAt(Math.floor(Date.now() / 1000));
     } catch (e) {
       setPublishErr(e instanceof Error ? e.message : 'Publish failed');
     } finally {
       setPublishing(false);
     }
-  }, [ndk, displaySpAddress, session]);
+  }, [ndk, displaySpAddress, session, useDetKey]);
 
   const extensionId = chrome.runtime.id;
   const installCmd = `python3 install.py --extension-id=${extensionId}`;
@@ -462,6 +479,16 @@ function SpSection() {
                 </span>
               )}
               {publishErr && <span className="text-xs text-red-500">{publishErr}</span>}
+            </div>
+            <div className="flex items-center gap-2 px-1">
+              <span className="text-xs text-zinc-400">Payment identity:</span>
+              <button
+                onClick={() => { setUseDetKey(v => !v); setPublishedAt(null); }}
+                className="text-xs text-zinc-500 hover:text-accent transition-colors"
+                title={useDetKey ? 'Switch to Social (NSP) - address derived from npub' : 'Switch to Deterministic - separate payment key, same nsec'}
+              >
+                {useDetKey ? 'Deterministic' : 'Social (NSP)'}
+              </button>
             </div>
             </div>
           )}

@@ -59,6 +59,16 @@ export function deriveSpendPriv(privkeyHex: string): string {
   return derivePrivOffset(privkeyHex, 'nostr-sp/spend').toString(16).padStart(64, '0');
 }
 
+export function derivePaymentPriv(privkeyHex: string): string {
+  return derivePrivOffset(privkeyHex, 'nostr-payment/v1').toString(16).padStart(64, '0');
+}
+
+export function privToXonlyPubHex(privkeyHex: string): string {
+  const G = secp256k1.Point.BASE;
+  const d = BigInt('0x' + privkeyHex);
+  return bytesToHex(G.multiply(d).toBytes(true).slice(1));
+}
+
 export function deriveSpendPub(pubkeyHex: string): string {
   const n = secp256k1.Point.Fn.ORDER;
   const G = secp256k1.Point.BASE;

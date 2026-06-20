@@ -213,7 +213,7 @@ export function ProfileView({ pubkey }: { pubkey: string }) {
   }, [isSelf, ndk, pubkey]);
   const [activeTab, setActiveTab] = useState<ProfileTab>('posts');
   const [editState, setEditState] = useState<EditState>({
-    name: '', displayName: '', about: '', website: '', lud16: '',
+    name: '', displayName: '', about: '', website: '', lud16: '', picture: '', banner: '',
   });
 
   const TABS: { id: ProfileTab; label: string }[] = [
