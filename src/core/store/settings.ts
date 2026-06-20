@@ -2,9 +2,10 @@ const KEY = 'settings';
 
 interface AppSettings {
   wideLayout: boolean;
+  newTabOverride: boolean;
 }
 
-const DEFAULTS: AppSettings = { wideLayout: false };
+const DEFAULTS: AppSettings = { wideLayout: false, newTabOverride: false };
 
 async function load(): Promise<AppSettings> {
   const result = await chrome.storage.local.get(KEY);
@@ -22,4 +23,12 @@ export async function getWideLayout(): Promise<boolean> {
 
 export async function setWideLayout(value: boolean): Promise<void> {
   await save({ wideLayout: value });
+}
+
+export async function getNewTabOverride(): Promise<boolean> {
+  return (await load()).newTabOverride;
+}
+
+export async function setNewTabOverride(value: boolean): Promise<void> {
+  await save({ newTabOverride: value });
 }

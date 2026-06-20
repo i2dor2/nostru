@@ -70,8 +70,15 @@ async function getActivePrivHex(): Promise<string | null> {
 
 async function getSavedRelays(): Promise<string[]> {
   const result = await chrome.storage.local.get(RELAYS_KEY);
-  const saved = result[RELAYS_KEY] as string[] | undefined;
-  return saved?.length ? saved : DEFAULT_RELAY_URLS;
+  const raw = result[RELAYS_KEY];
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return DEFAULT_RELAY_URLS;
+  // New format: RelayConfig[] - use read-enabled relays for notifications
+  if (typeof raw[0] === 'object') {
+    const urls = (raw as { url: string; read: boolean }[]).filter(r => r.read).map(r => r.url);
+    return urls.length ? urls : DEFAULT_RELAY_URLS;
+  }
+  // Old format: string[]
+  return raw as string[];
 }
 
 async function getBlockedPubkeys(): Promise<Set<string>> {
@@ -388,7 +395,15 @@ async function handleNip07(msg: BridgeNip07Request): Promise<unknown> {
   }
   if (msg.method === 'getRelays') {
     const data = await chrome.storage.local.get('relays');
-    return (data.relays as Record<string, { read: boolean; write: boolean }>) ?? {};
+    const raw = data.relays;
+    if (!raw || !Array.isArray(raw) || raw.length === 0) return {};
+    if (typeof raw[0] === 'object') {
+      return Object.fromEntries(
+        (raw as { url: string; read: boolean; write: boolean }[]).map(r => [r.url, { read: r.read, write: r.write }]),
+      );
+    }
+    // Old format: string[]
+    return Object.fromEntries((raw as string[]).map(u => [u, { read: true, write: true }]));
   }
 
   const privHex = await getActivePrivHex();

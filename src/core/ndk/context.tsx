@@ -28,9 +28,9 @@ export function NDKProvider({ children, privkey }: { children: ReactNode; privke
     let cancelled = false;
     const privkeyHex = bytesToHex(privkey);
 
-    getSavedRelays().then(relayUrls => {
+    getSavedRelays().then(relayConfigs => {
       if (cancelled) return;
-      const instance = createNDK(privkeyHex, relayUrls);
+      const instance = createNDK(privkeyHex, relayConfigs.map(r => r.url));
       instanceRef.current = instance;
       setNdk(instance);
 

@@ -2,15 +2,16 @@ import { useEffect, useState, useCallback } from 'react';
 import { IconPlus, IconTrash, IconRefresh, IconSun, IconMoon, IconX, IconEyeOff, IconShieldOff } from '@tabler/icons-react';
 import { useNDK } from '../../core/ndk';
 import { DEFAULT_RELAYS } from '../../core/ndk/config';
-import { getSavedRelays, saveRelays } from '../../core/store/relays';
+import { getSavedRelays, saveRelays, type RelayConfig } from '../../core/store/relays';
 import { setTheme, applyTheme, type Theme } from '../../core/store/theme';
 import { useBlocks, useMutes, useProfile } from '../feed/hooks';
 import { removeBlock } from '../../core/store/blocks';
 import { removeMute, getMutes } from '../../core/store/mutes';
-import { publishMuteList } from '../../core/events/lists';
+import { publishMuteList, publishRelayList } from '../../core/events/lists';
 import { encodePubkey, truncateNpub } from '../../core/keys';
+import { getNewTabOverride, setNewTabOverride } from '../../core/store/settings';
 
-interface RelayEntry {
+interface RelayStatus {
   url: string;
   connected: boolean;
   connecting: boolean;
@@ -58,6 +59,22 @@ function UserListRow({ pubkey, actionLabel, actionIcon: ActionIcon, onAction }: 
   );
 }
 
+function RwToggle({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={`Toggle ${label}`}
+      className={`text-xs font-mono w-5 h-5 rounded flex items-center justify-center transition-colors shrink-0 ${
+        active
+          ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+          : 'text-zinc-300 dark:text-zinc-600'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLayout, onWideLayoutChange }: {
   onOpenWallet: () => void;
   onOpenPermissions: () => void;
@@ -66,13 +83,14 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
   onWideLayoutChange: (v: boolean) => Promise<void>;
 }) {
   const { ndk } = useNDK();
-  const [relays, setRelays] = useState<string[]>([]);
-  const [relayStatuses, setRelayStatuses] = useState<Map<string, RelayEntry>>(new Map());
+  const [relays, setRelays] = useState<RelayConfig[]>([]);
+  const [relayStatuses, setRelayStatuses] = useState<Map<string, RelayStatus>>(new Map());
   const [newRelay, setNewRelay] = useState('');
   const [addError, setAddError] = useState('');
   const [theme, setThemeState] = useState<Theme>(
     () => document.documentElement.classList.contains('dark') ? 'dark' : 'light',
   );
+  const [newTabOverrideState, setNewTabOverrideState] = useState(false);
   const blocks = useBlocks();
   const mutes = useMutes();
   const blockedPubkeys = Array.from(blocks);
@@ -80,13 +98,14 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
 
   useEffect(() => {
     getSavedRelays().then(setRelays);
+    getNewTabOverride().then(setNewTabOverrideState);
   }, []);
 
   useEffect(() => {
     if (!ndk) return;
     const poll = () => {
-      const map = new Map<string, RelayEntry>();
-      for (const url of relays) {
+      const map = new Map<string, RelayStatus>();
+      for (const { url } of relays) {
         const normalized = normalizeUrl(url);
         const relay = ndk.pool.relays.get(normalized);
         const status = relay?.status ?? -1;
@@ -117,29 +136,50 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
       setAddError('Must start with wss:// or ws://');
       return;
     }
-    if (relays.includes(trimmed)) {
+    if (relays.some(r => r.url === trimmed)) {
       setAddError('Already in list');
       return;
     }
-    const updated = [...relays, trimmed];
+    const updated = [...relays, { url: trimmed, read: true, write: true }];
     setRelays(updated);
     setNewRelay('');
     await saveRelays(updated);
-    if (ndk) ndk.addExplicitRelay(trimmed, undefined, true);
+    if (ndk) {
+      ndk.addExplicitRelay(trimmed, undefined, true);
+      publishRelayList(ndk, updated).catch(() => {});
+    }
   }, [newRelay, relays, ndk]);
 
   const handleRemove = useCallback(async (url: string) => {
-    const updated = relays.filter(r => r !== url);
+    const updated = relays.filter(r => r.url !== url);
     setRelays(updated);
     await saveRelays(updated);
-    if (ndk) ndk.pool.removeRelay(normalizeUrl(url));
+    if (ndk) {
+      ndk.pool.removeRelay(normalizeUrl(url));
+      publishRelayList(ndk, updated).catch(() => {});
+    }
+  }, [relays, ndk]);
+
+  const handleToggleRead = useCallback(async (url: string) => {
+    const updated = relays.map(r => r.url === url ? { ...r, read: !r.read } : r);
+    setRelays(updated);
+    await saveRelays(updated);
+    if (ndk) publishRelayList(ndk, updated).catch(() => {});
+  }, [relays, ndk]);
+
+  const handleToggleWrite = useCallback(async (url: string) => {
+    const updated = relays.map(r => r.url === url ? { ...r, write: !r.write } : r);
+    setRelays(updated);
+    await saveRelays(updated);
+    if (ndk) publishRelayList(ndk, updated).catch(() => {});
   }, [relays, ndk]);
 
   const handleReset = useCallback(async () => {
-    const defaults = [...DEFAULT_RELAYS];
+    const defaults = DEFAULT_RELAYS.map(url => ({ url, read: true, write: true }));
     if (ndk) {
       ndk.pool.relays.forEach((_, url) => ndk.pool.removeRelay(url));
-      for (const url of defaults) ndk.addExplicitRelay(url, undefined, true);
+      for (const { url } of defaults) ndk.addExplicitRelay(url, undefined, true);
+      publishRelayList(ndk, defaults).catch(() => {});
     }
     setRelays(defaults);
     await saveRelays(defaults);
@@ -168,6 +208,11 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
     }
   }, [ndk]);
 
+  const handleNewTabOverrideChange = useCallback(async (v: boolean) => {
+    setNewTabOverrideState(v);
+    await setNewTabOverride(v);
+  }, []);
+
   return (
     <div className="flex-1 overflow-y-auto">
       <section className="px-4 py-4 border-b border-zinc-100 dark:border-zinc-800">
@@ -193,6 +238,15 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
             </span>
           </button>
         )}
+        <button
+          onClick={() => void handleNewTabOverrideChange(!newTabOverrideState)}
+          className="flex items-center justify-between w-full py-2"
+        >
+          <span className="text-sm">Override new tab page</span>
+          <span className={`w-8 h-4 rounded-full transition-colors relative ${newTabOverrideState ? 'bg-accent' : 'bg-zinc-300 dark:bg-zinc-600'}`}>
+            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${newTabOverrideState ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </span>
+        </button>
       </section>
 
       <section className="px-4 py-4 border-b border-zinc-100 dark:border-zinc-800">
@@ -207,15 +261,17 @@ export function SettingsScreen({ onOpenWallet, onOpenPermissions, narrow, wideLa
         </div>
 
         <ul className="space-y-1 mb-3">
-          {relays.map(url => {
+          {relays.map(({ url, read, write }) => {
             const entry = relayStatuses.get(url);
             return (
-              <li key={url} className="flex items-center gap-2 py-1">
+              <li key={url} className="flex items-center gap-1.5 py-1">
                 <StatusDot
                   connected={entry?.connected ?? false}
                   connecting={entry?.connecting ?? false}
                 />
                 <span className="flex-1 text-xs font-mono text-zinc-600 dark:text-zinc-400 truncate">{url}</span>
+                <RwToggle active={read} label="R" onClick={() => void handleToggleRead(url)} />
+                <RwToggle active={write} label="W" onClick={() => void handleToggleWrite(url)} />
                 <button
                   onClick={() => void handleRemove(url)}
                   className="text-zinc-300 dark:text-zinc-600 hover:text-red-500 transition-colors shrink-0"
