@@ -1,5 +1,22 @@
+import { NDKEvent } from '@nostr-dev-kit/ndk';
 import type NDK from '@nostr-dev-kit/ndk';
-import type { NDKEvent } from '@nostr-dev-kit/ndk';
+
+export async function publishNip352Address(
+  ndk: NDK,
+  sp1Address: string,
+  network: 'mainnet' | 'signet' | 'testnet' = 'mainnet',
+): Promise<void> {
+  const event = new NDKEvent(ndk, {
+    kind: 10352,
+    content: '',
+    tags: [
+      ['d', network],
+      ['sp1', sp1Address],
+    ],
+  });
+  await event.sign();
+  await event.publish();
+}
 
 export async function fetchNip352Address(
   ndk: NDK,

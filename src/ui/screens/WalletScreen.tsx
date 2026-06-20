@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   IconWallet, IconUnlink, IconBolt, IconScan, IconCopy, IconCheck,
   IconAlertTriangle, IconLoader2, IconBroadcast, IconChevronDown, IconChevronUp,
-  IconPencil, IconX,
+  IconPencil, IconX, IconUpload,
 } from '@tabler/icons-react';
 import { NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk';
 import { useWallet } from '../context/WalletContext';
@@ -10,6 +10,7 @@ import { useNDK } from '../../core/ndk';
 import { useAccount } from '../context/AccountContext';
 import { deriveNspAddress } from '../../core/nsp';
 import { getCustomSpAddress, setCustomSpAddress } from '../../core/store/customSp';
+import { publishNip352Address } from '../../core/events/nip352';
 
 // ── NWC Wallet ────────────────────────────────────────────────────────────
 
@@ -177,6 +178,9 @@ function SpSection() {
   const [customSpAddress, setCustomSpAddressState] = useState<string | null>(null);
   const [editingSpAddr, setEditingSpAddr] = useState(false);
   const [spAddrDraft, setSpAddrDraft] = useState('');
+  const [publishing, setPublishing] = useState(false);
+  const [publishErr, setPublishErr] = useState('');
+  const [publishedAt, setPublishedAt] = useState<number | null>(null);
 
   const pubkey = session.status === 'unlocked' ? session.account.pubkey : '';
   const derivedSpAddress = pubkey ? (() => { try { return deriveNspAddress(pubkey); } catch { return null; } })() : null;
@@ -192,6 +196,20 @@ function SpSection() {
     setCustomSpAddressState(trimmed || null);
     setEditingSpAddr(false);
   }, [pubkey, spAddrDraft]);
+
+  const handlePublish = useCallback(async () => {
+    if (!ndk || !displaySpAddress || session.status !== 'unlocked') return;
+    setPublishErr('');
+    setPublishing(true);
+    try {
+      await publishNip352Address(ndk, displaySpAddress);
+      setPublishedAt(Math.floor(Date.now() / 1000));
+    } catch (e) {
+      setPublishErr(e instanceof Error ? e.message : 'Publish failed');
+    } finally {
+      setPublishing(false);
+    }
+  }, [ndk, displaySpAddress, session]);
 
   const extensionId = chrome.runtime.id;
   const installCmd = `python3 install.py --extension-id=${extensionId}`;
@@ -402,6 +420,7 @@ function SpSection() {
       {open && (
         <div className="mt-4 space-y-4">
           {displaySpAddress && !editingSpAddr && (
+            <div className="space-y-1">
             <div className="flex items-center gap-2 p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
               <span className="text-xs font-mono text-zinc-500 truncate flex-1" title={displaySpAddress}>
                 {displaySpAddress.slice(0, 20)}...
@@ -426,6 +445,24 @@ function SpSection() {
                   <IconX size={12} />
                 </button>
               )}
+            </div>
+            <div className="flex items-center gap-2 px-1">
+              <button
+                onClick={() => void handlePublish()}
+                disabled={publishing || !ndk || session.status !== 'unlocked'}
+                className="text-xs text-accent hover:underline disabled:opacity-40 flex items-center gap-1"
+              >
+                {publishing
+                  ? <><IconLoader2 size={10} className="animate-spin" />Publishing...</>
+                  : <><IconUpload size={10} />Publish to Nostr (NIP-352)</>}
+              </button>
+              {publishedAt && !publishing && (
+                <span className="text-xs text-green-500 flex items-center gap-1">
+                  <IconCheck size={10} />Published
+                </span>
+              )}
+              {publishErr && <span className="text-xs text-red-500">{publishErr}</span>}
+            </div>
             </div>
           )}
           {editingSpAddr && (
